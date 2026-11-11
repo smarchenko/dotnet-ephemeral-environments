@@ -55,10 +55,12 @@ push updates it → PR closed/merged → env destroyed.
 - **WORKING STYLE: build the PoC in small stages** — implement one thing, user looks & experiments,
   then next. Never land everything at once (lots of new tech for the user). One plan per stage.
 
+- Hetzner model: **one long-lived VPS** created once by Terraform (run from laptop, local state,
+  gitignored); preview envs = containers + DB deployed onto it by CI via SSH. No server per PR.
 - IaC for Hetzner: **Terraform** (`hcloud` provider) + **cloud-init** for server setup.
   Bicep = Azure-only; stage 9 may compare Terraform vs Bicep on Azure.
 
-## Proposed stage roadmap (awaiting user approval)
+## Stage roadmap (APPROVED 2026-11-11)
 0. App skeleton: MVC Web + API (Swagger) + EF Core/Postgres + JS widget + CORS + runtime config; one env via docker compose
 1. Migrations as separate step (EF migration bundle `migrator` image) + seed
 2. Multi-env locally: Traefik, `<env>.localhost`/`<env>-api.localhost`, shared Postgres DB-per-env, `deploy`/`destroy -Env x` scripts
@@ -85,7 +87,8 @@ Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/li
 
 ## Brainstorming process stage
 - [x] Intent understood, path = architectural (spec → plan → implementation)
-- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing + Web type + DB placement + migrations + seed decided; IaC=Terraform; next: user approves stage roadmap)
+- [x] Clarifying questions + roadmap approved
+- [ ] Design sections (in progress: overall architecture + stage 0)
 - [ ] Approaches 2-3 + recommendation
 - [ ] Design sections approved
 - [ ] Spec written: docs/superpowers/specs/YYYY-MM-DD-branch-deployment-design.md
