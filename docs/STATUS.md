@@ -73,6 +73,13 @@ push updates it → PR closed/merged → env destroyed.
 8. Azure DevOps pipelines (same scripts, `ado-` prefix)
 9. (optional) Azure hosting: Bicep vs Terraform
 10. (optional) Umbraco on same infra
+## Design (in progress)
+- §1 Repo/projects APPROVED: .NET 10; `src/Poc.Web` (MVC + wwwroot/js/widget.js), `src/Poc.Api`
+  (controllers + Swagger UI), `src/Poc.Domain` (entities, no deps), `src/Poc.Data` (DbContext, Fluent
+  configs, Migrations, Npgsql), `src/Poc.Contracts` (DTOs); `tests/Poc.Api.Tests` (WebApplicationFactory
+  + Testcontainers Postgres); `deploy/local/docker-compose.yml`; central package mgmt. Model: `Product`
+  (Id, Name, Price, CreatedAt). Manual Domain→DTO mapping. No full Clean Architecture.
+
 Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/limits, shared staging.
 
 ## Brainstorm topics to cover
