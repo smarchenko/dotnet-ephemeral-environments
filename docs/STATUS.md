@@ -51,7 +51,9 @@ push updates it → PR closed/merged → env destroyed.
   migrations vs `main`, classifies expand/contract; contract ops allowed only with
   `[ContractMigration("reason")]` (+ CODEOWNERS on `Migrations/`); (2) **Squawk** on generated SQL as
   warnings (locking issues etc.). Runs as PR check before preview deploy.
-  User: such changes must be done **step by step, not in one commit** (clarifying exact rule).
+  Contract rule (default): contract migration must be in its own PR (no other migrations / app code).
+- **WORKING STYLE: build the PoC in small stages** — implement one thing, user looks & experiments,
+  then next. Never land everything at once (lots of new tech for the user). One plan per stage.
 
 ## Brainstorm topics to cover
 1. Trigger & lifecycle (create on PR open, update on push, destroy on close, cleanup of stale envs)
@@ -65,7 +67,7 @@ push updates it → PR closed/merged → env destroyed.
 
 ## Brainstorming process stage
 - [x] Intent understood, path = architectural (spec → plan → implementation)
-- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing + Web type + DB placement + migrations + seed decided; migration check approach C; clarifying 'step-by-step' rule)
+- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing + Web type + DB placement + migrations + seed decided; migration check decided; next: agree stage roadmap)
 - [ ] Approaches 2-3 + recommendation
 - [ ] Design sections approved
 - [ ] Spec written: docs/superpowers/specs/YYYY-MM-DD-branch-deployment-design.md
