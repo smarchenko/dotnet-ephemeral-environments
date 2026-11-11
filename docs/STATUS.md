@@ -24,6 +24,10 @@ push updates it → PR closed/merged → env destroyed.
 - Repo lives in its own folder `D:\Work\Personal\PetProjects\BranchBasedDeployment` (moved out of pdp, git init'ed).
   Claude memory is path-bound → CLAUDE.md + docs/STATUS.md are the source of truth.
 
+- Lifecycle: env **created on PR open** (draft too), **updated on push** to PR branch, **destroyed on
+  PR close/merge**; plus **manual re-run/redeploy** (workflow_dispatch / manual ADO run) and
+  **nightly cleanup** (destroy envs whose PR is closed or not updated for N days).
+
 ## Brainstorm topics to cover
 1. Trigger & lifecycle (create on PR open, update on push, destroy on close, cleanup of stale envs)
 2. Isolation (own Web/API/DB per branch)
@@ -36,7 +40,7 @@ push updates it → PR closed/merged → env destroyed.
 
 ## Brainstorming process stage
 - [x] Intent understood, path = architectural (spec → plan → implementation)
-- [ ] Clarifying questions (in progress — CI + repo decided; next: lifecycle & addressing)
+- [ ] Clarifying questions (in progress — CI + repo + lifecycle decided; next: addressing)
 - [ ] Approaches 2-3 + recommendation
 - [ ] Design sections approved
 - [ ] Spec written: docs/superpowers/specs/YYYY-MM-DD-branch-deployment-design.md
