@@ -1,0 +1,4 @@
+# Normalize line endings: LF in the repo and in working trees (CI runs on Linux)
+* text=auto eol=lf
+*.ico binary
+*.png binary

@@ -1,0 +1,23 @@
+<Project>
+  <!-- Shared build + code-quality settings for every project in the repo. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Built-in .NET analyzers: recommended rule set for the current SDK. -->
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- Apply .editorconfig code-style (IDExxxx) rules during build, not only in the IDE. -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Any warning breaks the build. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- IDE0005 (unnecessary usings) needs XML docs generation to be reported at build time. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- ...but we do not require XML doc comments on public members. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <!-- Fail restore/build on vulnerable packages (direct + transitive), severity moderate and up. -->
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>moderate</NuGetAuditLevel>
+  </PropertyGroup>
+</Project>
