@@ -1,7 +1,7 @@
 # Branch-based deployment PoC — Design
 
 - Date: 2026-11-11
-- Status: draft, under user review
+- Status: approved by user (2026-11-11)
 - Scope: overall architecture + decisions + stage roadmap; **stage 0 specified in detail**.
   Later stages get a short design refresh (and their own plan) when they start.
 
@@ -38,6 +38,9 @@ experiment before the next stage starts. Never deliver several new technologies 
 | QA tools | Swagger UI enabled in preview envs (by flag, not `IsDevelopment()`). **Bruno** collection in the repo |
 | Observability | Stage 0: `TraceId`/`SpanId` in JSON console logs (built-in). Later: OpenTelemetry + Aspire Dashboard (O1), Grafana `otel-lgtm` (O2) |
 | Kubernetes | Optional stages after the Docker flow works: Helm + k3d locally (K1), k3s on Hetzner (K2) |
+| Repos | **GitHub: public repo on the personal account** (showcase project; unlimited Actions, free secret scanning + push protection). Azure DevOps org + Azure Repos are created closer to stage 8 (request free hosted parallelism early, or use a self-hosted agent) |
+| Security (public repo) | No secrets, server IP or keys in the repo: everything lives in GitHub Secrets/Variables. **Fork PRs never deploy**; `pull_request_target` with PR code checkout is never used; no self-hosted runners on the public repo. Server: SSH key only (no password login), Hetzner Cloud Firewall (22/80/443, SSH optionally limited to the owner's IP), Postgres not exposed, preview envs behind Traefik basic auth |
+| Code quality | Stage 0: `.editorconfig`, `Directory.Build.props` (`Nullable`, `AnalysisLevel=latest-recommended`, `EnforceCodeStyleInBuild`, `TreatWarningsAsErrors`), `dotnet format --verify-no-changes` locally. Stage 0 also turns on built-in **NuGetAudit** (vulnerable packages fail the build). Stage 5a: format/build/coverage checks, PR template, CODEOWNERS, rulesets on `main`. Stage 5b: security and supply chain (see §3). Stage Q: 2–3 recurring review comments turned into analyzer rules (user's PDP goal). AI review optional |
 | Local Docker | **Linux engine via `DOCKER_CONTEXT=desktop-linux`** (it runs next to the Windows-containers engine used for Sitecore, so no switching is needed). Scripts run a preflight check that `docker info` reports `linux`. PoC ports are configurable and **avoid 80/443** (Sitecore). Traefik later on `8080` |
 
 ## 3. Stage roadmap
@@ -45,19 +48,24 @@ experiment before the next stage starts. Never deliver several new technologies 
 | # | Stage | New things |
 |---|---|---|
 | 0 | App skeleton | MVC Web, API + Swagger, Domain/Data/Contracts, EF Core + Postgres, JS widget, CORS, runtime config, health probes; one env via docker compose |
-| 1 | Migrations as a separate step + seed | EF migration bundle, `migrator` image, seed step |
+| 1 | Migrations as a separate step + seed | EF migration bundle, `migrator` image, seed step. **Local dev uses the same path**: compose service `migrator` runs before `api` (`depends_on: condition: service_completed_successfully`), so `docker compose up` = DB → migrate → seed → apps. When running from the IDE: `scripts/db-update.ps1` (`docker compose run --rm migrator`) and `scripts/db-reset.ps1` (drop → migrate → seed). No `EnsureCreated`, no migrate-on-startup even in Dev |
 | 2 | Multi-env locally | Traefik, `<env>.localhost:8080` / `<env>-api.localhost:8080`, shared Postgres with DB-per-env, `deploy`/`destroy -Env x` scripts; try `--scale api=2 web=2` (→ Data Protection keys) |
 | O1 | Observability | `Poc.ServiceDefaults` + OpenTelemetry (ASP.NET Core, HttpClient, Npgsql), Aspire Dashboard, `traceparent` sent from the widget, `deployment.environment` tag |
 | 3 | Bruno | Collection with a per-env `baseUrl` |
-| 4 | Migration safety | Expand/contract tool, `[ContractMigration]`, Squawk warnings; demo rename via expand → switch → contract PRs |
-| 5 | GitHub Actions CI | Build, tests, `migration-safety` as PR checks (no deploy) |
-| 6a | Hetzner VPS | Terraform + cloud-init: Docker, Traefik, Postgres, wildcard DNS, TLS |
-| 6b | Preview deploy from GitHub | On PR open/push/close + manual re-run; link posted to the PR |
+| 4a | Migration safety | Expand/contract tool, `[ContractMigration]`, Squawk warnings; demo rename via expand → switch → contract PRs |
+| 4b | API contract safety | **oasdiff**: compare the PR's OpenAPI document with `main`'s; breaking changes (removed endpoint/field, new required param…) fail unless explicitly allowed. The API counterpart of migration-safety |
+| 5a | GitHub Actions CI | PR checks (no deploy): build (warnings as errors), tests + **coverage report** (coverlet + ReportGenerator in the job summary, no hard threshold yet), `dotnet format --verify-no-changes`, `migration-safety`, `oasdiff`; PR template, CODEOWNERS, rulesets/branch protection on `main` |
+| 5b | Security & supply chain | **gitleaks** (secrets), **CodeQL** (SAST for C#, JS and workflows; free on public repos), **Dependabot** (nuget, docker, github-actions; grouped weekly), **Trivy** (scan built images: fail on fixable HIGH/CRITICAL), **hadolint** (Dockerfiles), **actionlint + zizmor** (workflow correctness and security), all third-party actions **pinned by commit SHA** |
+| Q | Review comments → rules | 2–3 recurring review comments from the user's real project → `.editorconfig` severity / existing analyzers (Roslynator, Meziantou, BannedApiAnalyzers) / custom Roslyn analyzer with tests; demo PR fails in CI |
+| AI | (optional) AI code review | Claude Code GitHub Action or Copilot review; compare with the analyzers |
+| X | (optional) Extra checks | Playwright E2E smoke of the Web on the preview env, SBOM (CycloneDX) attached to images, PR title convention (Conventional Commits), license check of dependencies |
+| 6a | Hetzner VPS | Terraform + cloud-init: Docker, Traefik, Postgres, wildcard DNS, TLS. Checks: `terraform fmt -check`, `terraform validate`, **tflint**, Trivy config scan (IaC misconfig) |
+| 6b | Preview deploy from GitHub | On PR open/push/close + manual re-run; link posted to the PR. **Post-deploy smoke**: wait for `/health/ready`, then run the Bruno collection (`bru run`) against the preview env; the deploy job fails if smoke fails |
 | 7 | Nightly cleanup | Scheduled job that destroys orphaned/stale envs |
-| K1 | Kubernetes locally | Helm chart, k3d, namespace per env, 2 replicas, probes, rolling update; scripts get `-Target compose\|k8s` |
+| K1 | Kubernetes locally | Helm chart, k3d, namespace per env, 2 replicas, probes, rolling update; scripts get `-Target compose\|k8s`. Checks: `helm lint`, **kubeconform** (manifest schema validation) |
 | K2 | Kubernetes on Hetzner | k3s (probably an 8 GB VPS), GitHub preview deploy to k8s |
 | O2 | Grafana | `otel-lgtm` on the server, per-env dashboards |
-| 8 | Azure DevOps | Same scripts, `ado-` prefix, compare with GitHub |
+| 8 | Azure DevOps | Same scripts, `ado-` prefix, branch policies, compare with GitHub |
 | 9 | (optional) Azure | Hosting with Bicep vs Terraform |
 | 10 | (optional) Umbraco | Second app on the same infra |
 
@@ -98,7 +106,7 @@ runtime.
 ├─ deploy/local/docker-compose.yml
 ├─ docs/
 ├─ Directory.Build.props, Directory.Packages.props   (central package management)
-├─ .gitignore, .dockerignore, README.md
+├─ .editorconfig, .gitignore, .dockerignore, README.md
 └─ Poc.sln
 ```
 
@@ -169,7 +177,16 @@ No Serilog or OpenTelemetry in stage 0.
   the exposed Postgres port). The app never migrates on startup. Stage 1 replaces this with the
   `migrator` step.
 
-### 5.7 Tests
+### 5.7 Code quality baseline
+
+- `.editorconfig` with C# style and naming rules at `warning` severity.
+- `Directory.Build.props`: `<Nullable>enable`, `<ImplicitUsings>enable`,
+  `<AnalysisLevel>latest-recommended`, `<EnforceCodeStyleInBuild>true`, `<TreatWarningsAsErrors>true`,
+  `<NuGetAuditMode>all</NuGetAuditMode>` + `<NuGetAuditLevel>moderate</NuGetAuditLevel>` (vulnerable
+  direct or transitive packages fail `restore`/`build`).
+- The README documents `dotnet format --verify-no-changes`. CI enforcement comes in stage 5.
+
+### 5.8 Tests
 
 `tests/Poc.Api.Tests` (xUnit, `WebApplicationFactory<Program>`, Testcontainers PostgreSQL; schema
 applied via `Database.MigrateAsync()` in the test fixture only):
@@ -183,7 +200,7 @@ Testcontainers must use the Linux engine: `DOCKER_HOST=npipe:////./pipe/dockerDe
 (to be verified during implementation; document the working setting in the README).
 No Web tests in stage 0; the Web is checked by hand with the list below.
 
-### 5.8 Definition of done / how to try
+### 5.9 Definition of done / how to try
 
 1. `$env:DOCKER_CONTEXT='desktop-linux'; docker compose -f deploy/local/docker-compose.yml up --build -d`
 2. `dotnet ef database update` (command documented in the README).
@@ -194,5 +211,5 @@ No Web tests in stage 0; the Web is checked by hand with the list below.
 6. `docker compose stop postgres` → `/health/ready` returns 503 while `/health/live` stays 200;
    the Web shows a friendly error message (API returned 500 ProblemDetails), not a crash page.
 7. Logs of web and api for one request share the same `TraceId`.
-8. `dotnet test` is green.
+8. `dotnet test` is green; `dotnet build` has no warnings; `dotnet format --verify-no-changes` passes.
 9. The README has a "Stage 0: how to run" section.

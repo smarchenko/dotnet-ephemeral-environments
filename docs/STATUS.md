@@ -2,6 +2,12 @@
 
 > Living file. Update after every decision / completed step. Read this first on session start.
 
+## Working rules (from user, 2026-11-11)
+- Claude **never commits**; the user reviews and commits.
+- After each step Claude reports: what was added, how it works, step-by-step run & test guide.
+- `README.md` must always contain current run instructions.
+- Small stages; stop after each for the user to experiment.
+
 ## Goal
 Understand & test a flow where QA tests a feature **directly from its branch** (ephemeral / preview
 environment per branch/PR) instead of merging into integration branches (dev/test/uat).
@@ -64,17 +70,25 @@ push updates it → PR closed/merged → env destroyed.
 0. App skeleton: MVC Web + API (Swagger) + EF Core/Postgres + JS widget + CORS + runtime config; one env via docker compose
 1. Migrations as separate step (EF migration bundle `migrator` image) + seed
 2. Multi-env locally: Traefik, `<env>.localhost`/`<env>-api.localhost`, shared Postgres DB-per-env, `deploy`/`destroy -Env x` scripts
+O1. OpenTelemetry + ServiceDefaults + Aspire Dashboard + traceparent from widget
 3. Bruno collection (per-env baseUrl)
-4. migration-safety check (EF ops expand/contract + `[ContractMigration]` + Squawk warnings)
-5. GitHub Actions CI: build + migration-safety PR check (no deploy)
-6a. Hetzner VPS via Terraform + cloud-init (wildcard DNS, TLS)
-6b. Preview deploy from GitHub on PR open/push/close + manual re-run
+4a. migration-safety check (EF ops expand/contract + `[ContractMigration]` + Squawk warnings)
+4b. API contract safety (oasdiff vs main)
+5a. GitHub Actions CI: build/format/tests+coverage/migration-safety/oasdiff PR checks, PR template, CODEOWNERS, rulesets (no deploy)
+5b. Security & supply chain: gitleaks, CodeQL, Dependabot, Trivy, hadolint, actionlint+zizmor, actions pinned by SHA
+Q. Review comments → analyzer rules (user's PDP item)
+AI. (optional) AI code review
+X. (optional) Playwright E2E, SBOM, PR title convention, license check
+6a. Hetzner VPS via Terraform + cloud-init (wildcard DNS, TLS) + terraform fmt/validate, tflint, trivy config
+6b. Preview deploy from GitHub on PR open/push/close + manual re-run + post-deploy smoke (health + Bruno `bru run`)
 7. Nightly cleanup
-K1. Helm chart + local k3d (namespace per env, 2 replicas, probes)
+K1. Helm chart + local k3d (namespace per env, 2 replicas, probes) + helm lint, kubeconform
 K2. k3s on Hetzner + GitHub preview deploy to k8s
-8. Azure DevOps pipelines (same scripts, `ado-` prefix)
+O2. Grafana (otel-lgtm) on server, per-env dashboards
+8. Azure DevOps pipelines (same scripts, `ado-` prefix, branch policies)
 9. (optional) Azure hosting: Bicep vs Terraform
 10. (optional) Umbraco on same infra
+
 ## Design (in progress)
 - §1 Repo/projects APPROVED: .NET 10; `src/Poc.Web` (MVC + wwwroot/js/widget.js), `src/Poc.Api`
   (controllers + Swagger UI), `src/Poc.Domain` (entities, no deps), `src/Poc.Data` (DbContext, Fluent
@@ -98,6 +112,17 @@ K2. k3s on Hetzner + GitHub preview deploy to k8s
   Local Docker: use `DOCKER_CONTEXT=desktop-linux` (Linux engine runs alongside Windows engine for
   Sitecore), preflight check, avoid ports 80/443.
 
+- Repos: **GitHub public, personal account** (showcase). ADO org created closer to stage 8.
+  Public-repo security rules are in spec §2 (no secrets/IP in repo, fork PRs never deploy, SSH key only…).
+
+- Code quality: baseline in stage 0 (.editorconfig, Directory.Build.props, dotnet format, NuGetAudit); stage 5 adds
+  format/gitleaks checks, PR template, CODEOWNERS, rulesets; **stage Q** (after 5) = user's PDP item:
+  2–3 recurring review comments → analyzers/CI (**user will provide the comments later**);
+  optional AI review stage. ADO branch policies in stage 8.
+
+- Local dev DB (from stage 1): compose `migrator` service before api; scripts db-update/db-reset; no
+  EnsureCreated / no migrate-on-startup even in Dev. Stage 0: manual `dotnet ef database update`.
+
 Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/limits, shared staging.
 
 ## Brainstorm topics to cover
@@ -116,11 +141,12 @@ Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/li
 - [x] Design sections (overall + stage 0) approved
 - [ ] Approaches 2-3 + recommendation
 - [ ] Design sections approved
-- [x] Spec written: docs/superpowers/specs/2026-11-11-branch-deployment-design.md (AWAITING USER REVIEW)
-- [ ] Implementation plan (writing-plans)
+- [x] Spec written: docs/superpowers/specs/2026-11-11-branch-deployment-design.md (APPROVED by user 2026-11-11)
+- [x] Stage 0 plan: docs/superpowers/plans/2026-11-11-stage-0-app-skeleton.md (APPROVED, execution: **Native** / executing-plans)
 - [ ] Phase A implemented
 - [ ] Phase B implemented
 - [ ] Umbraco experiment
 
 ## Next step
-User reviews the spec. After approval → invoke writing-plans for **stage 0 only**.
+Stage 0 in progress (native). **Task 1 done** (scaffold + quality baseline) — awaiting user review.
+Next: Task 2 (Domain + Data + InitialCreate). Ledger: .superpowers/sdd/2026-11-11-stage-0-app-skeleton/progress.md
