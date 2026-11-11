@@ -33,6 +33,12 @@ push updates it → PR closed/merged → env destroyed.
   Locally `<domain>` = `localhost`. Implies per-env API URL config in Web + CORS on API.
 - QA API testing tool: **Bruno** (collection in repo; env `baseUrl` per branch).
 
+- Web app: **ASP.NET Core MVC** (target real project is MVC) calling API **server-side** (API URL via
+  env var; may use internal Docker network) **+ a small JS widget calling API from the browser**
+  (runtime config, e.g. `/config.json` / injected into layout; requires CORS for env's Web origin).
+  Build once, deploy anywhere — no per-env values baked into images.
+- API: **Swagger UI must be enabled in preview envs** (not only Development), at `<env>-api.<domain>/swagger`.
+
 ## Brainstorm topics to cover
 1. Trigger & lifecycle (create on PR open, update on push, destroy on close, cleanup of stale envs)
 2. Isolation (own Web/API/DB per branch)
@@ -45,7 +51,7 @@ push updates it → PR closed/merged → env destroyed.
 
 ## Brainstorming process stage
 - [x] Intent understood, path = architectural (spec → plan → implementation)
-- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing decided; next: Web app type)
+- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing + Web type decided; next: DB per branch)
 - [ ] Approaches 2-3 + recommendation
 - [ ] Design sections approved
 - [ ] Spec written: docs/superpowers/specs/YYYY-MM-DD-branch-deployment-design.md
