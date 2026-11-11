@@ -28,6 +28,11 @@ push updates it → PR closed/merged → env destroyed.
   PR close/merge**; plus **manual re-run/redeploy** (workflow_dispatch / manual ADO run) and
   **nightly cleanup** (destroy envs whose PR is closed or not updated for N days).
 
+- Addressing: **separate subdomains** per service (more realistic): Web `<env>.<domain>`, API
+  `<env>-api.<domain>` (single wildcard level → one wildcard DNS record + one wildcard cert later).
+  Locally `<domain>` = `localhost`. Implies per-env API URL config in Web + CORS on API.
+- QA API testing tool: **Bruno** (collection in repo; env `baseUrl` per branch).
+
 ## Brainstorm topics to cover
 1. Trigger & lifecycle (create on PR open, update on push, destroy on close, cleanup of stale envs)
 2. Isolation (own Web/API/DB per branch)
@@ -40,7 +45,7 @@ push updates it → PR closed/merged → env destroyed.
 
 ## Brainstorming process stage
 - [x] Intent understood, path = architectural (spec → plan → implementation)
-- [ ] Clarifying questions (in progress — CI + repo + lifecycle decided; next: addressing)
+- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing decided; next: Web app type)
 - [ ] Approaches 2-3 + recommendation
 - [ ] Design sections approved
 - [ ] Spec written: docs/superpowers/specs/YYYY-MM-DD-branch-deployment-design.md
