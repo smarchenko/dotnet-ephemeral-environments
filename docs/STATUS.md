@@ -94,6 +94,10 @@ K2. k3s on Hetzner + GitHub preview deploy to k8s
   probes); **K2** k3s on Hetzner (likely 8 GB VPS) + GitHub preview deploy to k8s; scripts get
   `-Target compose|k8s`.
 
+- §3 Errors/tests/DoD APPROVED (see spec §5). Observability stages O1 (after 2) / O2 (with Hetzner/K8s).
+  Local Docker: use `DOCKER_CONTEXT=desktop-linux` (Linux engine runs alongside Windows engine for
+  Sitecore), preflight check, avoid ports 80/443.
+
 Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/limits, shared staging.
 
 ## Brainstorm topics to cover
@@ -109,16 +113,14 @@ Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/li
 ## Brainstorming process stage
 - [x] Intent understood, path = architectural (spec → plan → implementation)
 - [x] Clarifying questions + roadmap approved
-- [ ] Design sections (in progress: overall architecture + stage 0)
+- [x] Design sections (overall + stage 0) approved
 - [ ] Approaches 2-3 + recommendation
 - [ ] Design sections approved
-- [ ] Spec written: docs/superpowers/specs/YYYY-MM-DD-branch-deployment-design.md
+- [x] Spec written: docs/superpowers/specs/2026-11-11-branch-deployment-design.md (AWAITING USER REVIEW)
 - [ ] Implementation plan (writing-plans)
 - [ ] Phase A implemented
 - [ ] Phase B implemented
 - [ ] Umbraco experiment
 
 ## Next step
-1. ~~Move to own folder + git init~~ (done 2026-11-11).
-2. Continue brainstorm: env lifecycle (create/update/destroy, stale cleanup) and addressing
-   (`<env>.localhost` locally via reverse proxy; wildcard DNS later).
+User reviews the spec. After approval → invoke writing-plans for **stage 0 only**.
