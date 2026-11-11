@@ -112,7 +112,7 @@ O2. Grafana (otel-lgtm) on server, per-env dashboards
   Local Docker: use `DOCKER_CONTEXT=desktop-linux` (Linux engine runs alongside Windows engine for
   Sitecore), preflight check, avoid ports 80/443.
 
-- Repos: **GitHub public, personal account** (showcase). ADO org created closer to stage 8.
+- Repos: **GitHub public, personal account** (showcase), repo name **`dotnet-ephemeral-environments`**, remote name `github`. ADO org created closer to stage 8.
   Public-repo security rules are in spec §2 (no secrets/IP in repo, fork PRs never deploy, SSH key only…).
 
 - Code quality: baseline in stage 0 (.editorconfig, Directory.Build.props, dotnet format, NuGetAudit); stage 5 adds

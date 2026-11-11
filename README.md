@@ -1,4 +1,6 @@
-# Branch-based deployment PoC
+# dotnet-ephemeral-environments
+
+Branch-based deployment PoC: ephemeral preview environments per pull request for a .NET app.
 
 A proof of concept for **per-branch preview environments**: QA tests a feature directly from its
 branch / pull request in its own environment (Web + API + its own PostgreSQL database), instead of
