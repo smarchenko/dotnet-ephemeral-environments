@@ -46,7 +46,12 @@ push updates it → PR closed/merged → env destroyed.
 
 - Seed: **empty schema + deterministic seed** (seed step after migrations; data in repo).
 - NEW requirement: **migration safety check** step — follow **expand/contract (cleanup)** approach,
-  **block irreversible/destructive schema changes unless explicitly allowed**. (approach being discussed)
+  **block irreversible/destructive schema changes unless explicitly allowed**.
+  Approach **C**: (1) blocking gate = .NET tool inspecting EF `MigrationBuilder.Operations` of new
+  migrations vs `main`, classifies expand/contract; contract ops allowed only with
+  `[ContractMigration("reason")]` (+ CODEOWNERS on `Migrations/`); (2) **Squawk** on generated SQL as
+  warnings (locking issues etc.). Runs as PR check before preview deploy.
+  User: such changes must be done **step by step, not in one commit** (clarifying exact rule).
 
 ## Brainstorm topics to cover
 1. Trigger & lifecycle (create on PR open, update on push, destroy on close, cleanup of stale envs)
@@ -60,7 +65,7 @@ push updates it → PR closed/merged → env destroyed.
 
 ## Brainstorming process stage
 - [x] Intent understood, path = architectural (spec → plan → implementation)
-- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing + Web type + DB placement + migrations + seed decided; next: migration safety check approach)
+- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing + Web type + DB placement + migrations + seed decided; migration check approach C; clarifying 'step-by-step' rule)
 - [ ] Approaches 2-3 + recommendation
 - [ ] Design sections approved
 - [ ] Spec written: docs/superpowers/specs/YYYY-MM-DD-branch-deployment-design.md
