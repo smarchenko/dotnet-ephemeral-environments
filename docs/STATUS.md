@@ -70,6 +70,8 @@ push updates it → PR closed/merged → env destroyed.
 6a. Hetzner VPS via Terraform + cloud-init (wildcard DNS, TLS)
 6b. Preview deploy from GitHub on PR open/push/close + manual re-run
 7. Nightly cleanup
+K1. Helm chart + local k3d (namespace per env, 2 replicas, probes)
+K2. k3s on Hetzner + GitHub preview deploy to k8s
 8. Azure DevOps pipelines (same scripts, `ado-` prefix)
 9. (optional) Azure hosting: Bicep vs Terraform
 10. (optional) Umbraco on same infra
@@ -79,6 +81,18 @@ push updates it → PR closed/merged → env destroyed.
   configs, Migrations, Npgsql), `src/Poc.Contracts` (DTOs); `tests/Poc.Api.Tests` (WebApplicationFactory
   + Testcontainers Postgres); `deploy/local/docker-compose.yml`; central package mgmt. Model: `Product`
   (Id, Name, Price, CreatedAt). Manual Domain→DTO mapping. No full Clean Architecture.
+
+- §2 Config & flows APPROVED: build once, env vars at runtime. Web: `Api__InternalBaseUrl` (typed
+  HttpClient, server-side), `Api__PublicBaseUrl` (rendered into `<meta name="api-base-url">` for
+  widget.js); pages `/` (server-side list) and `/Home/Widget` (JS list + add). API:
+  `ConnectionStrings__Default`, `Cors__AllowedOrigins` (no `*`), `Swagger__Enabled` flag (not
+  IsDevelopment), endpoints `GET/POST /products`, `GET /products/{id}`. Probes: `/health/live` (no deps)
+  + `/health/ready` (DB). `App__EnvironmentName` shown in Web footer + Swagger. Stage 0 compose:
+  postgres, api :5081, web :5080; migrations applied manually (`dotnet ef database update`) until stage 1.
+- Roadmap additions: stage 2 also tries `--scale api=2 web=2` behind Traefik (→ Data Protection keys
+  issue for MVC). New stages after 7: **K1** Helm chart + local k3d (namespace per env, replicas,
+  probes); **K2** k3s on Hetzner (likely 8 GB VPS) + GitHub preview deploy to k8s; scripts get
+  `-Target compose|k8s`.
 
 Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/limits, shared staging.
 
