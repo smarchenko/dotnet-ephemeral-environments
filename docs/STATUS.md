@@ -44,6 +44,10 @@ push updates it → PR closed/merged → env destroyed.
 - Migrations: **separate deploy step, NOT on app startup** (likely EF Core migration bundle in its
   own image/one-off container, run before rolling out Web/API).
 
+- Seed: **empty schema + deterministic seed** (seed step after migrations; data in repo).
+- NEW requirement: **migration safety check** step — follow **expand/contract (cleanup)** approach,
+  **block irreversible/destructive schema changes unless explicitly allowed**. (approach being discussed)
+
 ## Brainstorm topics to cover
 1. Trigger & lifecycle (create on PR open, update on push, destroy on close, cleanup of stale envs)
 2. Isolation (own Web/API/DB per branch)
@@ -56,7 +60,7 @@ push updates it → PR closed/merged → env destroyed.
 
 ## Brainstorming process stage
 - [x] Intent understood, path = architectural (spec → plan → implementation)
-- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing + Web type + DB placement + migrations decided; next: seed data)
+- [ ] Clarifying questions (in progress — CI + repo + lifecycle + addressing + Web type + DB placement + migrations + seed decided; next: migration safety check approach)
 - [ ] Approaches 2-3 + recommendation
 - [ ] Design sections approved
 - [ ] Spec written: docs/superpowers/specs/YYYY-MM-DD-branch-deployment-design.md
