@@ -5,8 +5,8 @@
 **Goal:** A runnable .NET 10 MVC Web + Web API + PostgreSQL skeleton in one env via docker compose.
 It includes Swagger, CORS, health probes, a JS widget, runtime config and a code-quality baseline.
 
-**Architecture:** `Poc.Api` (controllers) uses `Poc.Data` (EF Core/Npgsql) over `Poc.Domain`, and
-exposes DTOs from `Poc.Contracts`. `Poc.Web` (MVC) calls the API server-side through a typed
+**Architecture:** `EphemeralEnvs.Api` (controllers) uses `EphemeralEnvs.Data` (EF Core/Npgsql) over `EphemeralEnvs.Domain`, and
+exposes DTOs from `EphemeralEnvs.Contracts`. `EphemeralEnvs.Web` (MVC) calls the API server-side through a typed
 HttpClient. Its JS widget calls the API from the browser, using a URL rendered into a `<meta>` tag.
 All env-specific values are runtime env vars, and images are built once.
 
@@ -33,8 +33,8 @@ Testcontainers.PostgreSql, Docker Compose.
 - CORS origins come only from `Cors__AllowedOrigins`. Never `AllowAnyOrigin`.
 - Swagger is enabled by `Swagger__Enabled`, never by `IsDevelopment()`.
 - Read configuration lazily (options / `IServiceProvider`), so `WebApplicationFactory` overrides apply.
-- Ports: web host `5080`, api host `5081`, postgres host `5432`; overridable via `POC_WEB_PORT`,
-  `POC_API_PORT`, `POC_DB_PORT`. Containers listen on `8080`. Never use host ports 80/443.
+- Ports: web host `5080`, api host `5081`, postgres host `5432`; overridable via `EE_WEB_PORT`,
+  `EE_API_PORT`, `EE_DB_PORT`. Containers listen on `8080`. Never use host ports 80/443.
 
 ## Review Focus
 
@@ -54,33 +54,33 @@ global.json                         SDK 10.0.x, rollForward latestFeature
 Directory.Build.props               shared build/quality settings
 Directory.Packages.props            central package versions
 .config/dotnet-tools.json           dotnet-ef local tool
-Poc.sln
+EphemeralEnvs.slnx
 README.md
-src/Poc.Domain/Product.cs
-src/Poc.Data/PocDbContext.cs
-src/Poc.Data/Configurations/ProductConfiguration.cs
-src/Poc.Data/DesignTimeDbContextFactory.cs
-src/Poc.Data/Migrations/*          InitialCreate (generated)
-src/Poc.Contracts/ProductDto.cs, CreateProductRequest.cs
-src/Poc.Api/Program.cs
-src/Poc.Api/Controllers/ProductsController.cs
-src/Poc.Api/Infrastructure/CorsSetup.cs          origin parsing + policy
-src/Poc.Api/Infrastructure/AppOptions.cs         App:EnvironmentName
-src/Poc.Api/Dockerfile
-src/Poc.Web/Program.cs
-src/Poc.Web/Services/ProductsApiClient.cs
-src/Poc.Web/Options/ApiOptions.cs                InternalBaseUrl, PublicBaseUrl
-src/Poc.Web/Controllers/HomeController.cs
-src/Poc.Web/Views/Home/Index.cshtml, Widget.cshtml
-src/Poc.Web/Views/Shared/_Layout.cshtml
-src/Poc.Web/wwwroot/js/widget.js
-src/Poc.Web/Dockerfile
-tests/Poc.Api.Tests/PostgresFixture.cs           Testcontainers + migrate
-tests/Poc.Api.Tests/ApiFactory.cs                WebApplicationFactory<Program>
-tests/Poc.Api.Tests/ProductsTests.cs
-tests/Poc.Api.Tests/HealthTests.cs
-tests/Poc.Api.Tests/CorsTests.cs
-tests/Poc.Api.Tests/SwaggerTests.cs
+src/EphemeralEnvs.Domain/Product.cs
+src/EphemeralEnvs.Data/AppDbContext.cs
+src/EphemeralEnvs.Data/Configurations/ProductConfiguration.cs
+src/EphemeralEnvs.Data/DesignTimeDbContextFactory.cs
+src/EphemeralEnvs.Data/Migrations/*          InitialCreate (generated)
+src/EphemeralEnvs.Contracts/ProductDto.cs, CreateProductRequest.cs
+src/EphemeralEnvs.Api/Program.cs
+src/EphemeralEnvs.Api/Controllers/ProductsController.cs
+src/EphemeralEnvs.Api/Infrastructure/CorsSetup.cs          origin parsing + policy
+src/EphemeralEnvs.Api/Infrastructure/AppOptions.cs         App:EnvironmentName
+src/EphemeralEnvs.Api/Dockerfile
+src/EphemeralEnvs.Web/Program.cs
+src/EphemeralEnvs.Web/Services/ProductsApiClient.cs
+src/EphemeralEnvs.Web/Options/ApiOptions.cs                InternalBaseUrl, PublicBaseUrl
+src/EphemeralEnvs.Web/Controllers/HomeController.cs
+src/EphemeralEnvs.Web/Views/Home/Index.cshtml, Widget.cshtml
+src/EphemeralEnvs.Web/Views/Shared/_Layout.cshtml
+src/EphemeralEnvs.Web/wwwroot/js/widget.js
+src/EphemeralEnvs.Web/Dockerfile
+tests/EphemeralEnvs.Api.Tests/PostgresFixture.cs           Testcontainers + migrate
+tests/EphemeralEnvs.Api.Tests/ApiFactory.cs                WebApplicationFactory<Program>
+tests/EphemeralEnvs.Api.Tests/ProductsTests.cs
+tests/EphemeralEnvs.Api.Tests/HealthTests.cs
+tests/EphemeralEnvs.Api.Tests/CorsTests.cs
+tests/EphemeralEnvs.Api.Tests/SwaggerTests.cs
 deploy/local/docker-compose.yml
 ```
 
@@ -89,12 +89,12 @@ deploy/local/docker-compose.yml
 ### Task 1: Solution scaffold + code-quality baseline
 
 **Files:** Create `global.json`, `.editorconfig`, `.gitignore`, `Directory.Build.props`,
-`Directory.Packages.props`, `Poc.sln`, the 5 `src/*` projects, `tests/Poc.Api.Tests`, `README.md`.
+`Directory.Packages.props`, `EphemeralEnvs.slnx`, the 5 `src/*` projects, `tests/EphemeralEnvs.Api.Tests`, `README.md`.
 
 **Interfaces:**
-- Produces: projects `Poc.Domain` (classlib), `Poc.Data` (classlib), `Poc.Contracts` (classlib),
-  `Poc.Api` (`dotnet new webapi --use-controllers`), `Poc.Web` (`dotnet new mvc`),
-  `Poc.Api.Tests` (`dotnet new xunit`). References: Api → Domain, Data, Contracts; Data → Domain;
+- Produces: projects `EphemeralEnvs.Domain` (classlib), `EphemeralEnvs.Data` (classlib), `EphemeralEnvs.Contracts` (classlib),
+  `EphemeralEnvs.Api` (`dotnet new webapi --use-controllers`), `EphemeralEnvs.Web` (`dotnet new mvc`),
+  `EphemeralEnvs.Api.Tests` (`dotnet new xunit`). References: Api → Domain, Data, Contracts; Data → Domain;
   Web → Contracts; Tests → Api, Data.
 
 - [ ] **Step 1: Create the solution, projects and references** using the templates above. Remove the
@@ -125,41 +125,41 @@ deploy/local/docker-compose.yml
 
 ### Task 2: Domain + Data + InitialCreate migration
 
-**Files:** Create `src/Poc.Domain/Product.cs`, `src/Poc.Data/PocDbContext.cs`,
-`src/Poc.Data/Configurations/ProductConfiguration.cs`, `src/Poc.Data/DesignTimeDbContextFactory.cs`,
-`src/Poc.Data/Migrations/*` (generated).
+**Files:** Create `src/EphemeralEnvs.Domain/Product.cs`, `src/EphemeralEnvs.Data/AppDbContext.cs`,
+`src/EphemeralEnvs.Data/Configurations/ProductConfiguration.cs`, `src/EphemeralEnvs.Data/DesignTimeDbContextFactory.cs`,
+`src/EphemeralEnvs.Data/Migrations/*` (generated).
 
 **Interfaces:**
 - Produces: `public sealed class Product { Guid Id; string Name; decimal Price; DateTimeOffset CreatedAt }`
   with a constructor `Product(string name, decimal price, DateTimeOffset createdAt)` (Id = `Guid.CreateVersion7()`),
   plus a private parameterless ctor for EF.
-- Produces: `public sealed class PocDbContext(DbContextOptions<PocDbContext> options) : DbContext` with
+- Produces: `public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext` with
   `DbSet<Product> Products`; `OnModelCreating` applies configurations from the assembly.
 - Produces: `ProductConfiguration : IEntityTypeConfiguration<Product>`: table `products`; snake_case
   columns `id`, `name`, `price`, `created_at`; `Name` required, max length 200; `Price` `numeric(18,2)`.
-- Produces: `DesignTimeDbContextFactory`: connection string from env var `POC_DB` or default
-  `Host=localhost;Port=5432;Database=poc;Username=poc;Password=poc`.
+- Produces: `DesignTimeDbContextFactory`: connection string from env var `EE_DB` or default
+  `Host=localhost;Port=5432;Database=ephemeral_envs;Username=ephemeral_envs;Password=ephemeral_envs`.
 
 - [ ] **Step 1: Implement the four files** (packages: `Npgsql.EntityFrameworkCore.PostgreSQL`,
   `Microsoft.EntityFrameworkCore.Design` in Data, with `PrivateAssets=all`).
 - [ ] **Step 2: Generate the migration**
-  Run: `dotnet ef migrations add InitialCreate --project src/Poc.Data`
-  Expected: `src/Poc.Data/Migrations/*_InitialCreate.cs` contains `CreateTable(name: "products"` with a
+  Run: `dotnet ef migrations add InitialCreate --project src/EphemeralEnvs.Data`
+  Expected: `src/EphemeralEnvs.Data/Migrations/*_InitialCreate.cs` contains `CreateTable(name: "products"` with a
   `numeric(18,2)` price and `character varying(200)` name.
 - [ ] **Step 3: Verify** `dotnet build` (0 warnings) and `dotnet format --verify-no-changes`.
   Generated migration files may trigger style warnings; if so, exclude `Migrations/` in `.editorconfig`
   with `generated_code = true`, not by lowering global severities.
 - [ ] **Step 4: Update README**: section "Database" explaining that the schema is applied by hand in
-  stage 0 (`dotnet ef database update --project src/Poc.Data`, `POC_DB` env var if the port differs).
+  stage 0 (`dotnet ef database update --project src/EphemeralEnvs.Data`, `EE_DB` env var if the port differs).
 - [ ] **Step 5: Stop & report.**
 
 ---
 
 ### Task 3: Products API + ProblemDetails + integration tests
 
-**Files:** Create `src/Poc.Contracts/ProductDto.cs`, `src/Poc.Contracts/CreateProductRequest.cs`,
-`src/Poc.Api/Controllers/ProductsController.cs`, `tests/Poc.Api.Tests/PostgresFixture.cs`,
-`tests/Poc.Api.Tests/ApiFactory.cs`, `tests/Poc.Api.Tests/ProductsTests.cs`. Modify `src/Poc.Api/Program.cs`.
+**Files:** Create `src/EphemeralEnvs.Contracts/ProductDto.cs`, `src/EphemeralEnvs.Contracts/CreateProductRequest.cs`,
+`src/EphemeralEnvs.Api/Controllers/ProductsController.cs`, `tests/EphemeralEnvs.Api.Tests/PostgresFixture.cs`,
+`tests/EphemeralEnvs.Api.Tests/ApiFactory.cs`, `tests/EphemeralEnvs.Api.Tests/ProductsTests.cs`. Modify `src/EphemeralEnvs.Api/Program.cs`.
 
 **Interfaces:**
 - Produces: `public sealed record ProductDto(Guid Id, string Name, decimal Price, DateTimeOffset CreatedAt);`
@@ -175,7 +175,7 @@ deploy/local/docker-compose.yml
   and `Swagger:Enabled=true`, plus `extra`, via `UseSetting`.
 - API wiring in Program: `AddControllers()`, `AddProblemDetails()`, `UseExceptionHandler()`,
   `UseStatusCodePages()`; DbContext registered with
-  `AddDbContext<PocDbContext>((sp, o) => o.UseNpgsql(sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")))`.
+  `AddDbContext<AppDbContext>((sp, o) => o.UseNpgsql(sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")))`.
 
 - [ ] **Step 1: Verify Testcontainers reaches the Linux engine.** Write the fixture and one trivial test
   that starts the container.
@@ -204,9 +204,9 @@ deploy/local/docker-compose.yml
 
 ### Task 4: Health probes, CORS, Swagger flag, environment name, JSON logs
 
-**Files:** Create `src/Poc.Api/Infrastructure/CorsSetup.cs`, `src/Poc.Api/Infrastructure/AppOptions.cs`,
-`tests/Poc.Api.Tests/HealthTests.cs`, `CorsTests.cs`, `SwaggerTests.cs`. Modify `src/Poc.Api/Program.cs`,
-`src/Poc.Api/appsettings.json`.
+**Files:** Create `src/EphemeralEnvs.Api/Infrastructure/CorsSetup.cs`, `src/EphemeralEnvs.Api/Infrastructure/AppOptions.cs`,
+`tests/EphemeralEnvs.Api.Tests/HealthTests.cs`, `CorsTests.cs`, `SwaggerTests.cs`. Modify `src/EphemeralEnvs.Api/Program.cs`,
+`src/EphemeralEnvs.Api/appsettings.json`.
 
 **Interfaces:**
 - Consumes: `ApiFactory`, `PostgresFixture` (Task 3).
@@ -216,7 +216,7 @@ deploy/local/docker-compose.yml
   header and the methods GET/POST/OPTIONS for the parsed origins.
 - Produces: `AppOptions { string EnvironmentName = "unknown" }` bound to section `App`.
 - Health: `/health/live` with `Predicate = _ => false` (no checks); `/health/ready` with a DB check
-  tagged `ready` (`AddDbContextCheck<PocDbContext>(tags: ["ready"])`, package
+  tagged `ready` (`AddDbContextCheck<AppDbContext>(tags: ["ready"])`, package
   `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore`), filtered by that tag.
 - Swagger: `AddOpenApi()` with a document transformer that sets `Info.Description =
   $"Environment: {EnvironmentName}"`. When `Swagger:Enabled` is true, map `/openapi/v1.json` and
@@ -252,9 +252,9 @@ deploy/local/docker-compose.yml
 
 ### Task 5: Web (MVC): server-side list, JS widget, error handling
 
-**Files:** Create `src/Poc.Web/Options/ApiOptions.cs`, `src/Poc.Web/Services/ProductsApiClient.cs`,
-`src/Poc.Web/Views/Home/Widget.cshtml`, `src/Poc.Web/wwwroot/js/widget.js`. Modify
-`src/Poc.Web/Program.cs`, `Controllers/HomeController.cs`, `Views/Home/Index.cshtml`,
+**Files:** Create `src/EphemeralEnvs.Web/Options/ApiOptions.cs`, `src/EphemeralEnvs.Web/Services/ProductsApiClient.cs`,
+`src/EphemeralEnvs.Web/Views/Home/Widget.cshtml`, `src/EphemeralEnvs.Web/wwwroot/js/widget.js`. Modify
+`src/EphemeralEnvs.Web/Program.cs`, `Controllers/HomeController.cs`, `Views/Home/Index.cshtml`,
 `Views/Shared/_Layout.cshtml`, `appsettings.json`.
 
 **Interfaces:**
@@ -276,7 +276,7 @@ deploy/local/docker-compose.yml
 - Logging: the same JSON console + ActivityTrackingOptions setup as the API (Task 4).
 
 - [ ] **Step 1: Implement** the files above. No Web tests in stage 0 (spec §5.8).
-- [ ] **Step 2: Verify locally without Docker for the Web**: run the API (`dotnet run --project src/Poc.Api`)
+- [ ] **Step 2: Verify locally without Docker for the Web**: run the API (`dotnet run --project src/EphemeralEnvs.Api`)
   against Postgres from Task 2's manual setup, run the Web with `Api__InternalBaseUrl` and
   `Api__PublicBaseUrl` pointing at the API, and open `/` and `/Home/Widget`.
   Expected: both lists render, and adding a product via the widget works.
@@ -290,7 +290,7 @@ deploy/local/docker-compose.yml
 
 ### Task 6: Dockerfiles + docker compose + end-to-end check
 
-**Files:** Create `src/Poc.Api/Dockerfile`, `src/Poc.Web/Dockerfile`, `.dockerignore`,
+**Files:** Create `src/EphemeralEnvs.Api/Dockerfile`, `src/EphemeralEnvs.Web/Dockerfile`, `.dockerignore`,
 `deploy/local/docker-compose.yml`. Modify `README.md`.
 
 **Interfaces:**
@@ -298,18 +298,18 @@ deploy/local/docker-compose.yml
 - Dockerfiles: multi-stage `mcr.microsoft.com/dotnet/sdk:10.0` → `mcr.microsoft.com/dotnet/aspnet:10.0`.
   Build context = repo root (so `Directory.*.props` and `global.json` are included). `ASPNETCORE_HTTP_PORTS=8080`,
   `USER $APP_UID` (the non-root user built into the image).
-- Compose (project name `poc-local`):
-  - `postgres`: `postgres:17`, env `POSTGRES_DB/USER/PASSWORD=poc`, volume `pgdata`, port `${POC_DB_PORT:-5432}:5432`,
-    healthcheck `pg_isready -U poc -d poc`.
-  - `api`: build `src/Poc.Api/Dockerfile`, port `${POC_API_PORT:-5081}:8080`, `depends_on: postgres: condition: service_healthy`,
-    env exactly as the spec §5.3 table (Cors origin uses `${POC_WEB_PORT:-5080}`).
-  - `web`: build `src/Poc.Web/Dockerfile`, port `${POC_WEB_PORT:-5080}:8080`, `depends_on: api`, env as spec §5.4
-    (PublicBaseUrl uses `${POC_API_PORT:-5081}`).
+- Compose (project name `ephemeral-envs-local`):
+  - `postgres`: `postgres:17`, env `POSTGRES_DB/USER/PASSWORD=ephemeral_envs`, volume `pgdata`, port `${EE_DB_PORT:-5432}:5432`,
+    healthcheck `pg_isready -U ephemeral_envs -d ephemeral_envs`.
+  - `api`: build `src/EphemeralEnvs.Api/Dockerfile`, port `${EE_API_PORT:-5081}:8080`, `depends_on: postgres: condition: service_healthy`,
+    env exactly as the spec §5.3 table (Cors origin uses `${EE_WEB_PORT:-5080}`).
+  - `web`: build `src/EphemeralEnvs.Web/Dockerfile`, port `${EE_WEB_PORT:-5080}:8080`, `depends_on: api`, env as spec §5.4
+    (PublicBaseUrl uses `${EE_API_PORT:-5081}`).
 
 - [ ] **Step 1: Implement** the Dockerfiles, `.dockerignore` (`bin/`, `obj/`, `.git/`, `tests/`, `docs/`) and compose.
 - [ ] **Step 2: Run** `$env:DOCKER_CONTEXT='desktop-linux'; docker compose -f deploy/local/docker-compose.yml up --build -d`
   Expected: 3 containers running, postgres `healthy`.
-- [ ] **Step 3: Apply the schema** with `dotnet ef database update --project src/Poc.Data` → `Done.`
+- [ ] **Step 3: Apply the schema** with `dotnet ef database update --project src/EphemeralEnvs.Data` → `Done.`
 - [ ] **Step 4: Walk through spec §5.9 items 3–7 by hand** and note the results:
   `/` lists products and shows the footer `Environment: local`; the widget adds a product and DevTools shows
   the CORS request to `:5081`; `:5081/swagger` works; `curl :5081/health/live` and `/health/ready` return 200;

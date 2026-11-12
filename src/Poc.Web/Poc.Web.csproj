@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
-
-  <ItemGroup>
-    <ProjectReference Include="..\Poc.Contracts\Poc.Contracts.csproj" />
-  </ItemGroup>
-
-</Project>

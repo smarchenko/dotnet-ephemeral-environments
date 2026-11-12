@@ -1,4 +1,4 @@
-namespace Poc.Web.Models;
+namespace EphemeralEnvs.Web.Models;
 
 public class ErrorViewModel
 {

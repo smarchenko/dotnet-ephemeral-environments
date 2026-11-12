@@ -1,10 +1,10 @@
 using System.Diagnostics;
 
+using EphemeralEnvs.Web.Models;
+
 using Microsoft.AspNetCore.Mvc;
 
-using Poc.Web.Models;
-
-namespace Poc.Web.Controllers;
+namespace EphemeralEnvs.Web.Controllers;
 
 public class HomeController : Controller
 {

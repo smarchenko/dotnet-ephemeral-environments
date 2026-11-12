@@ -16,8 +16,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Poc.Api\Poc.Api.csproj" />
-    <ProjectReference Include="..\..\src\Poc.Data\Poc.Data.csproj" />
+    <ProjectReference Include="..\..\src\EphemeralEnvs.Api\EphemeralEnvs.Api.csproj" />
+    <ProjectReference Include="..\..\src\EphemeralEnvs.Data\EphemeralEnvs.Data.csproj" />
   </ItemGroup>
 
 </Project>

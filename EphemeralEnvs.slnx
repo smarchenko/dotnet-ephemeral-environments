@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/EphemeralEnvs.Api/EphemeralEnvs.Api.csproj" />
+    <Project Path="src/EphemeralEnvs.Contracts/EphemeralEnvs.Contracts.csproj" />
+    <Project Path="src/EphemeralEnvs.Data/EphemeralEnvs.Data.csproj" />
+    <Project Path="src/EphemeralEnvs.Domain/EphemeralEnvs.Domain.csproj" />
+    <Project Path="src/EphemeralEnvs.Web/EphemeralEnvs.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/EphemeralEnvs.Api.Tests/EphemeralEnvs.Api.Tests.csproj" />
+  </Folder>
+</Solution>

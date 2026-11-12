@@ -11,6 +11,8 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- Any warning breaks the build. -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- ...including MSBuild warnings such as MSB3277 (conflicting assembly versions). -->
+    <MSBuildTreatWarningsAsErrors>true</MSBuildTreatWarningsAsErrors>
     <!-- IDE0005 (unnecessary usings) needs XML docs generation to be reported at build time. -->
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <!-- ...but we do not require XML doc comments on public members. -->

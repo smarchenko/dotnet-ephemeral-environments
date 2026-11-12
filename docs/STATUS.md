@@ -90,9 +90,9 @@ O2. Grafana (otel-lgtm) on server, per-env dashboards
 10. (optional) Umbraco on same infra
 
 ## Design (in progress)
-- §1 Repo/projects APPROVED: .NET 10; `src/Poc.Web` (MVC + wwwroot/js/widget.js), `src/Poc.Api`
-  (controllers + Swagger UI), `src/Poc.Domain` (entities, no deps), `src/Poc.Data` (DbContext, Fluent
-  configs, Migrations, Npgsql), `src/Poc.Contracts` (DTOs); `tests/Poc.Api.Tests` (WebApplicationFactory
+- §1 Repo/projects APPROVED: .NET 10; `src/EphemeralEnvs.Web` (MVC + wwwroot/js/widget.js), `src/EphemeralEnvs.Api`
+  (controllers + Swagger UI), `src/EphemeralEnvs.Domain` (entities, no deps), `src/EphemeralEnvs.Data` (DbContext, Fluent
+  configs, Migrations, Npgsql), `src/EphemeralEnvs.Contracts` (DTOs); `tests/EphemeralEnvs.Api.Tests` (WebApplicationFactory
   + Testcontainers Postgres); `deploy/local/docker-compose.yml`; central package mgmt. Model: `Product`
   (Id, Name, Price, CreatedAt). Manual Domain→DTO mapping. No full Clean Architecture.
 
@@ -112,6 +112,9 @@ O2. Grafana (otel-lgtm) on server, per-env dashboards
   Local Docker: use `DOCKER_CONTEXT=desktop-linux` (Linux engine runs alongside Windows engine for
   Sitecore), preflight check, avoid ports 80/443.
 
+- Naming (2026-11-11): solution `EphemeralEnvs.slnx`, projects/namespaces `EphemeralEnvs.*` (was `Poc.*`),
+  DbContext `AppDbContext`. Local DB/user/password `ephemeral_envs` (was `poc`); env vars `EE_DB`,
+  `EE_WEB_PORT`, `EE_API_PORT`, `EE_DB_PORT` (were `POC_*`); compose project `ephemeral-envs-local`.
 - Repos: **GitHub public, personal account** (showcase), repo name **`dotnet-ephemeral-environments`**, remote name `github`. ADO org created closer to stage 8.
   Public-repo security rules are in spec §2 (no secrets/IP in repo, fork PRs never deploy, SSH key only…).
 
@@ -148,5 +151,5 @@ Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/li
 - [ ] Umbraco experiment
 
 ## Next step
-Stage 0 in progress (native). **Task 1 done** (scaffold + quality baseline) — awaiting user review.
-Next: Task 2 (Domain + Data + InitialCreate). Ledger: .superpowers/sdd/2026-11-11-stage-0-app-skeleton/progress.md
+Stage 0 in progress (native). **Tasks 1–2 done** (scaffold + quality baseline; Domain + Data + InitialCreate) — Task 2 + rename `Poc.*`→`EphemeralEnvs.*` verified by user (migration applied to `ephemeral_envs`, container `ee-db`); awaiting user commit.
+Next: Task 3 (Products API + ProblemDetails + Testcontainers tests). Ledger: .superpowers/sdd/2026-11-11-stage-0-app-skeleton/progress.md

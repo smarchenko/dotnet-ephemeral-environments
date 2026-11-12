@@ -50,7 +50,7 @@ experiment before the next stage starts. Never deliver several new technologies 
 | 0 | App skeleton | MVC Web, API + Swagger, Domain/Data/Contracts, EF Core + Postgres, JS widget, CORS, runtime config, health probes; one env via docker compose |
 | 1 | Migrations as a separate step + seed | EF migration bundle, `migrator` image, seed step. **Local dev uses the same path**: compose service `migrator` runs before `api` (`depends_on: condition: service_completed_successfully`), so `docker compose up` = DB → migrate → seed → apps. When running from the IDE: `scripts/db-update.ps1` (`docker compose run --rm migrator`) and `scripts/db-reset.ps1` (drop → migrate → seed). No `EnsureCreated`, no migrate-on-startup even in Dev |
 | 2 | Multi-env locally | Traefik, `<env>.localhost:8080` / `<env>-api.localhost:8080`, shared Postgres with DB-per-env, `deploy`/`destroy -Env x` scripts; try `--scale api=2 web=2` (→ Data Protection keys) |
-| O1 | Observability | `Poc.ServiceDefaults` + OpenTelemetry (ASP.NET Core, HttpClient, Npgsql), Aspire Dashboard, `traceparent` sent from the widget, `deployment.environment` tag |
+| O1 | Observability | `EphemeralEnvs.ServiceDefaults` + OpenTelemetry (ASP.NET Core, HttpClient, Npgsql), Aspire Dashboard, `traceparent` sent from the widget, `deployment.environment` tag |
 | 3 | Bruno | Collection with a per-env `baseUrl` |
 | 4a | Migration safety | Expand/contract tool, `[ContractMigration]`, Squawk warnings; demo rename via expand → switch → contract PRs |
 | 4b | API contract safety | **oasdiff**: compare the PR's OpenAPI document with `main`'s; breaking changes (removed endpoint/field, new required param…) fail unless explicitly allowed. The API counterpart of migration-safety |
@@ -96,18 +96,18 @@ runtime.
 ```
 /
 ├─ src/
-│  ├─ Poc.Web/          ASP.NET Core MVC (+ wwwroot/js/widget.js), Dockerfile
-│  ├─ Poc.Api/          ASP.NET Core Web API (controllers) + Swagger UI, Dockerfile
-│  ├─ Poc.Domain/       entities, no dependencies
-│  ├─ Poc.Data/         DbContext, IEntityTypeConfiguration<>, Migrations/, Npgsql
-│  └─ Poc.Contracts/    DTOs shared by Web and Api
+│  ├─ EphemeralEnvs.Web/          ASP.NET Core MVC (+ wwwroot/js/widget.js), Dockerfile
+│  ├─ EphemeralEnvs.Api/          ASP.NET Core Web API (controllers) + Swagger UI, Dockerfile
+│  ├─ EphemeralEnvs.Domain/       entities, no dependencies
+│  ├─ EphemeralEnvs.Data/         DbContext, IEntityTypeConfiguration<>, Migrations/, Npgsql
+│  └─ EphemeralEnvs.Contracts/    DTOs shared by Web and Api
 ├─ tests/
-│  └─ Poc.Api.Tests/    WebApplicationFactory + Testcontainers PostgreSQL
+│  └─ EphemeralEnvs.Api.Tests/    WebApplicationFactory + Testcontainers PostgreSQL
 ├─ deploy/local/docker-compose.yml
 ├─ docs/
 ├─ Directory.Build.props, Directory.Packages.props   (central package management)
 ├─ .editorconfig, .gitignore, .dockerignore, README.md
-└─ Poc.sln
+└─ EphemeralEnvs.slnx
 ```
 
 References: `Api → Domain, Data, Contracts`; `Data → Domain`; `Web → Contracts`.
@@ -117,7 +117,7 @@ No full Clean Architecture (no Application layer, no CQRS). Domain → DTO mappi
 
 `Product { Guid Id; string Name; decimal Price; DateTimeOffset CreatedAt }`.
 Fluent config: `Name` required, max 200; `Price` `numeric(18,2)`; table `products`.
-The initial migration `InitialCreate` lives in `Poc.Data`.
+The initial migration `InitialCreate` lives in `EphemeralEnvs.Data`.
 
 ### 5.3 API
 
@@ -134,7 +134,7 @@ API configuration:
 
 | Key | Stage 0 value (compose) |
 |---|---|
-| `ConnectionStrings__Default` | `Host=postgres;Database=poc;Username=poc;Password=poc` |
+| `ConnectionStrings__Default` | `Host=postgres;Database=ephemeral_envs;Username=ephemeral_envs;Password=ephemeral_envs` |
 | `Cors__AllowedOrigins` | `http://localhost:5080` |
 | `Swagger__Enabled` | `true` |
 | `App__EnvironmentName` | `local` |
@@ -170,8 +170,8 @@ No Serilog or OpenTelemetry in stage 0.
   non-root user.
 - `deploy/local/docker-compose.yml`: `postgres` (postgres:17, named volume, healthcheck),
   `api` (host `5081` → 8080, depends on healthy postgres), `web` (host `5080` → 8080).
-  Host ports can be changed through compose variables (`POC_WEB_PORT`, `POC_API_PORT`,
-  `POC_DB_PORT`, default 5432 → change it if it is taken).
+  Host ports can be changed through compose variables (`EE_WEB_PORT`, `EE_API_PORT`,
+  `EE_DB_PORT`, default 5432 → change it if it is taken).
 - Every Docker command uses the Linux engine: `$env:DOCKER_CONTEXT='desktop-linux'`.
 - Migrations in stage 0 are applied **by hand** from the host (`dotnet ef database update` against
   the exposed Postgres port). The app never migrates on startup. Stage 1 replaces this with the
@@ -188,7 +188,7 @@ No Serilog or OpenTelemetry in stage 0.
 
 ### 5.8 Tests
 
-`tests/Poc.Api.Tests` (xUnit, `WebApplicationFactory<Program>`, Testcontainers PostgreSQL; schema
+`tests/EphemeralEnvs.Api.Tests` (xUnit, `WebApplicationFactory<Program>`, Testcontainers PostgreSQL; schema
 applied via `Database.MigrateAsync()` in the test fixture only):
 
 - create a product, then get it by id and in the list;

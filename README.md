@@ -28,12 +28,12 @@ and the current progress in [`docs/STATUS.md`](docs/STATUS.md).
 
 | Path | What |
 |---|---|
-| `src/Poc.Web` | ASP.NET Core MVC front end |
-| `src/Poc.Api` | ASP.NET Core Web API |
-| `src/Poc.Domain` | Domain entities (no dependencies) |
-| `src/Poc.Data` | EF Core `DbContext`, configurations and migrations (PostgreSQL) |
-| `src/Poc.Contracts` | DTOs shared by Web and API |
-| `tests/Poc.Api.Tests` | API integration tests |
+| `src/EphemeralEnvs.Web` | ASP.NET Core MVC front end |
+| `src/EphemeralEnvs.Api` | ASP.NET Core Web API |
+| `src/EphemeralEnvs.Domain` | Domain entities (no dependencies) |
+| `src/EphemeralEnvs.Data` | EF Core `DbContext`, configurations and migrations (PostgreSQL) |
+| `src/EphemeralEnvs.Contracts` | DTOs shared by Web and API |
+| `tests/EphemeralEnvs.Api.Tests` | API integration tests |
 | `docs/` | Status, spec, plans |
 
 ## Build
@@ -42,6 +42,35 @@ and the current progress in [`docs/STATUS.md`](docs/STATUS.md).
 dotnet tool restore
 dotnet build
 ```
+
+## Database
+
+PostgreSQL, accessed through EF Core (`src/EphemeralEnvs.Data`). The schema is defined by **EF Core migrations** in
+`src/EphemeralEnvs.Data/Migrations`.
+
+**The applications never run migrations on startup.** In stage 0 the schema is applied by hand; from
+stage 1 on it is a separate deploy step (`migrator` container), also used by local `docker compose up`.
+
+Apply all migrations to a database:
+
+```powershell
+dotnet tool restore
+# Default target: Host=localhost;Port=5432;Database=ephemeral_envs;Username=ephemeral_envs;Password=ephemeral_envs
+dotnet ef database update --project src/EphemeralEnvs.Data
+
+# Another database / port: set EE_DB
+$env:EE_DB = 'Host=localhost;Port=55432;Database=ephemeral_envs;Username=ephemeral_envs;Password=ephemeral_envs'
+dotnet ef database update --project src/EphemeralEnvs.Data
+```
+
+Add a new migration after changing the model (entities in `EphemeralEnvs.Domain`, mapping in
+`EphemeralEnvs.Data/Configurations`):
+
+```powershell
+dotnet ef migrations add <Name> --project src/EphemeralEnvs.Data
+```
+
+Migration files are generated code: style rules do not apply to `Migrations/` (see `.editorconfig`).
 
 ## Code quality
 
@@ -54,7 +83,9 @@ The rules live in `Directory.Build.props` and `.editorconfig` and are enforced *
 - **Vulnerable NuGet packages fail restore/build** (`NuGetAuditMode=all`, level `moderate`, including
   transitive packages).
 - Package versions are managed centrally in `Directory.Packages.props`; `.csproj` files reference packages
-  without a version.
+  without a version. Transitive pinning is on, so a `PackageVersion` entry also pins indirect dependencies
+  (used to keep all EF Core assemblies on one patch version). MSBuild warnings (e.g. MSB3277 version
+  conflicts) also fail the build.
 - Line endings are LF everywhere (`.editorconfig` + `.gitattributes`), because CI runs on Linux.
 
 Check formatting the same way CI will:
