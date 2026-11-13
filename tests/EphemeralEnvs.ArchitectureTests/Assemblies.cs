@@ -10,6 +10,7 @@ internal static class Assemblies
     public static readonly Assembly Contracts = typeof(Contracts.ProductDto).Assembly;
     public static readonly Assembly Data = typeof(Data.AppDbContext).Assembly;
     public static readonly Assembly Domain = typeof(Domain.Product).Assembly;
+    public static readonly Assembly ServiceDefaults = typeof(ServiceDefaults.ServiceDefaultsExtensions).Assembly;
     public static readonly Assembly Web = typeof(Web.Controllers.HomeController).Assembly;
 }
 

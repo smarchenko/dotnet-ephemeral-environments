@@ -1,6 +1,7 @@
 using EphemeralEnvs.Api.ErrorHandling;
 using EphemeralEnvs.Api.Infrastructure;
 using EphemeralEnvs.Application;
+using EphemeralEnvs.ServiceDefaults;
 
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
@@ -9,11 +10,8 @@ const string readyTag = "ready";
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Logs: one JSON object per line on stdout (docker logs, collectors), with the request's TraceId/SpanId.
-builder.Logging.ClearProviders();
-builder.Logging.AddJsonConsole(o => o.IncludeScopes = true);
-builder.Logging.Configure(o => o.ActivityTrackingOptions =
-    ActivityTrackingOptions.TraceId | ActivityTrackingOptions.SpanId | ActivityTrackingOptions.ParentId);
+// JSON logs with TraceId/SpanId (shared with the Web; OpenTelemetry joins in stage O1).
+builder.AddServiceDefaults();
 
 builder.Services.Configure<AppOptions>(builder.Configuration.GetSection(AppOptions.SectionName));
 

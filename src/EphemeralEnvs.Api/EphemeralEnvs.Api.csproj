@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\EphemeralEnvs.Application\EphemeralEnvs.Application.csproj" />
     <ProjectReference Include="..\EphemeralEnvs.Contracts\EphemeralEnvs.Contracts.csproj" />
+    <ProjectReference Include="..\EphemeralEnvs.ServiceDefaults\EphemeralEnvs.ServiceDefaults.csproj" />
     <!-- Only for DomainValidationException (mapped to 400). Controllers must not use domain entities (ArchitectureTests). -->
     <ProjectReference Include="..\EphemeralEnvs.Domain\EphemeralEnvs.Domain.csproj" />
   </ItemGroup>

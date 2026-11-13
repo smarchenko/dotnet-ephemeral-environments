@@ -5,6 +5,7 @@
     <Project Path="src/EphemeralEnvs.Contracts/EphemeralEnvs.Contracts.csproj" />
     <Project Path="src/EphemeralEnvs.Data/EphemeralEnvs.Data.csproj" />
     <Project Path="src/EphemeralEnvs.Domain/EphemeralEnvs.Domain.csproj" />
+    <Project Path="src/EphemeralEnvs.ServiceDefaults/EphemeralEnvs.ServiceDefaults.csproj" />
     <Project Path="src/EphemeralEnvs.Web/EphemeralEnvs.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">

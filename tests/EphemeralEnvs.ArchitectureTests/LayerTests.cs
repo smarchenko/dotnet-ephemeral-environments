@@ -4,7 +4,8 @@ namespace EphemeralEnvs.ArchitectureTests;
 
 /// <summary>
 /// Allowed dependencies: Api → Application, Contracts, Domain (exceptions only); Application → Domain, Data, Contracts;
-/// Data → Domain; Web → Contracts. Domain and Contracts depend on nothing of ours.
+/// Data → Domain; Web → Contracts. Domain, Contracts and ServiceDefaults depend on nothing of ours;
+/// Api and Web both use ServiceDefaults.
 /// </summary>
 public sealed class LayerTests
 {
@@ -57,5 +58,27 @@ public sealed class LayerTests
             Types.InAssembly(Assemblies.Web).ShouldNot().HaveDependencyOnAny(
                 Ns.Api, Ns.Application, Ns.Data, Ns.Domain, Ns.EntityFrameworkCore, Ns.Npgsql),
             "The Web talks to the API over HTTP only.");
+    }
+
+    [Fact]
+    public void ServiceDefaults_DependsOnNothingOfOurs()
+    {
+        ArchAssert.Passes(
+            Types.InAssembly(Assemblies.ServiceDefaults).ShouldNot().HaveDependencyOnAny(
+                Ns.Api, Ns.Application, Ns.Contracts, Ns.Data, Ns.Domain, Ns.Web, Ns.EntityFrameworkCore),
+            "Shared host setup (logging, later OpenTelemetry) is infrastructure for every service, not app code.");
+    }
+
+    [Theory]
+    [InlineData(nameof(Assemblies.Api))]
+    [InlineData(nameof(Assemblies.Web))]
+    public void Services_UseServiceDefaults(string service)
+    {
+        // One place for logging/telemetry setup: a service that configures it itself would drift from the others.
+        var assembly = service == nameof(Assemblies.Api) ? Assemblies.Api : Assemblies.Web;
+
+        Assert.Contains(
+            assembly.GetReferencedAssemblies(),
+            reference => reference.Name == Assemblies.ServiceDefaults.GetName().Name);
     }
 }

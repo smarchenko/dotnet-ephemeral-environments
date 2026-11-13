@@ -71,7 +71,7 @@ push updates it → PR closed/merged → env destroyed.
 1. Migrations as separate step (EF migration bundle `migrator` image) + seed
 2. Multi-env locally: Traefik, `<env>.localhost`/`<env>-api.localhost`, shared Postgres DB-per-env, `deploy`/`destroy -Env x` scripts
 FF1. Feature flags via config: Microsoft.FeatureManagement, demo flag in API ([FeatureGate]) + Web widget + `/features`, tests on/off, `deploy -Flags`; PR-label flags later in 6b (added 2026-11-13)
-O1. OpenTelemetry + ServiceDefaults + Aspire Dashboard + traceparent from widget
+O1. OpenTelemetry + ServiceDefaults + Aspire Dashboard + traceparent from widget + HTTP resilience in ServiceDefaults (AddStandardResilienceHandler: timeouts, retries for safe methods, circuit breaker; replaces Api__TimeoutSeconds; added 2026-11-13)
 3. Bruno collection (per-env baseUrl)
 4a. migration-safety check (EF ops expand/contract + `[ContractMigration]` + Squawk warnings)
 4b. API contract safety (oasdiff vs main)
@@ -169,5 +169,6 @@ Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/li
 
 ## Next step
 Stage 0 in progress (native). **Tasks 1–3 done and committed** (bf2cedf: scaffold; Domain + Data + InitialCreate; Products API, CQRS level 2, domain invariants, architecture + contract tests, read side read-only at 3 levels).
-**Task 4 done, awaiting user review/commit:** `/health/live` (no checks) + `/health/ready` (DB check from Application `AddDatabaseCheck`), CORS from `Cors__AllowedOrigins` (`*` rejected), Swagger UI + `/openapi/v1.json` behind `Swagger__Enabled` with `Environment: <App__EnvironmentName>` in the description, JSON console logs with TraceId/SpanId/ParentId; `UseHttpsRedirection` removed (TLS ends at the proxy); EF SQL logs only in Development; `CreateProductRequest` became a property record so OpenAPI shows maxLength/min/max (+ contract rule: attributes on properties); Swashbuckle.AspNetCore.SwaggerUI 10.3.1 (11.0.1 did not compile against our SDK). 70 tests.
-Next: Task 5 (Web). Ledger: .superpowers/sdd/2026-11-11-stage-0-app-skeleton/progress.md
+**Task 4 done and committed** (d6bf336: health probes, CORS, Swagger flag, environment name, JSON logs).
+**Task 5 done, awaiting user review/commit:** Web: `/` server-side list via typed `ProductsApiClient` (`Api__InternalBaseUrl`, 5 s timeout, friendly "API is unavailable right now." + warning log on failure); `/Home/Widget` + `wwwroot/js/widget.js` (fetch from the browser via `<meta name="api-base-url">` = `Api__PublicBaseUrl`, ProblemDetails errors inline, "API is unavailable" on network error); footer `Environment: …`; `ApiOptions` validated on start (absolute URLs); JSON logs like the API; Web dev port 5080 (matches API dev CORS); `UseHttpsRedirection`/HSTS removed (TLS at the proxy). Checked by hand incl. Playwright (no Web tests in stage 0 per spec). Plus (user request 2026-11-13): new `src/EphemeralEnvs.ServiceDefaults` (`builder.AddServiceDefaults()` = JSON logs; O1 adds OpenTelemetry there), used by Api and Web; arch tests: ServiceDefaults depends on nothing of ours, Api/Web reference it; `LoggingTests` pins the API's log config. 74 tests. Web server-side timeout moved to config `Api__TimeoutSeconds` (default 5, validated > 0 on start).  `https` launch profiles removed from Api and Web (2026-11-13): Studio picked `https://localhost:7004`, an origin the dev CORS does not allow, so the widget failed; local runs are http-only like the containers.
+Next: Task 6 (Dockerfiles + docker compose). Ledger: .superpowers/sdd/2026-11-11-stage-0-app-skeleton/progress.md

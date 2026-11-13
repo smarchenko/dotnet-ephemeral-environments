@@ -34,9 +34,10 @@ and the current progress in [`docs/STATUS.md`](docs/STATUS.md).
 | `src/EphemeralEnvs.Domain` | Domain entities (no dependencies) |
 | `src/EphemeralEnvs.Data` | EF Core `DbContext`, configurations and migrations (PostgreSQL) |
 | `src/EphemeralEnvs.Contracts` | DTOs shared by Web and API |
+| `src/EphemeralEnvs.ServiceDefaults` | Setup shared by every service (`builder.AddServiceDefaults()`): JSON logs now, OpenTelemetry in stage O1 |
 | `tests/EphemeralEnvs.Api.Tests` | API integration tests (in-memory API + PostgreSQL in Docker) |
 | `tests/EphemeralEnvs.Domain.Tests` | Domain unit tests (invariants), no Docker |
-| `tests/EphemeralEnvs.ArchitectureTests` | Architecture rules (layers, CQRS, domain), no Docker |
+| `tests/EphemeralEnvs.ArchitectureTests` | Architecture rules (layers, CQRS, domain, contracts), no Docker |
 | `docs/` | Status, spec, plans |
 
 ### Architecture: CQRS (one database, separate read and write models)
@@ -178,9 +179,42 @@ API configuration (env vars; `__` = section separator):
 | `Swagger__Enabled` | `false` | `true` | a flag, not tied to the ASP.NET Core environment: a preview env runs as `Production` and can still show Swagger |
 | `App__EnvironmentName` | `unknown` | `local` | shown in the OpenAPI description (a preview env will use its branch slug) |
 
-**Logs** go to stdout as JSON, one object per line, with `TraceId`/`SpanId`/`ParentId` of the request (an incoming
+**Logs** (set up once for every service in `EphemeralEnvs.ServiceDefaults`) go to stdout as JSON, one object per line, with `TraceId`/`SpanId`/`ParentId` of the request (an incoming
 W3C `traceparent` header is continued). EF Core SQL commands are logged only in `Development` (in other environments
 `/health/ready` would log `SELECT 1` on every probe).
+
+## Run the Web locally
+
+Needs the API running (see above). In `Development` the Web listens on `http://localhost:5080` (the origin the API's
+`Development` CORS allows) and calls the API at `http://localhost:5136`. Both projects have only an `http` launch
+profile (Visual Studio / Rider use it too): TLS is terminated by the reverse proxy in deployed environments, and a Web
+served from another origin (e.g. `https://localhost:7004`) would be refused by CORS, so the widget would show
+"API is unavailable".
+
+```powershell
+dotnet run --project src/EphemeralEnvs.Api        # terminal 1
+dotnet run --project src/EphemeralEnvs.Web        # terminal 2 → http://localhost:5080
+```
+
+| Page | What it shows |
+|---|---|
+| `/` (Server-side) | product list fetched **by the server** through a typed `HttpClient` (`Api__InternalBaseUrl`, timeout `Api__TimeoutSeconds`, 5 s). API down → the page still renders with "API is unavailable right now." and a warning in the log |
+| `/Home/Widget` | the same list plus an "add product" form, rendered by `wwwroot/js/widget.js`, which calls the API **from the browser** (`Api__PublicBaseUrl`, CORS). Validation errors (ProblemDetails `title` + every field error) are shown inline; API down → "API is unavailable" |
+
+The footer of every page shows `Environment: <App__EnvironmentName>`.
+
+Web configuration (env vars):
+
+| Key | Default (`appsettings.json`) | `Development` | Compose (stage 0) | Meaning |
+|---|---|---|---|---|
+| `Api__InternalBaseUrl` | — (required) | `http://localhost:5136` | `http://api:8080` | API address for server-side calls (inside the Docker network) |
+| `Api__PublicBaseUrl` | — (required) | `http://localhost:5136` | `http://localhost:5081` | API address for the browser; written at runtime into `<meta name="api-base-url">`, so the image has no build-time config |
+| `Api__TimeoutSeconds` | `5` | `5` | `5` | timeout of a server-side API call; short on purpose (the page waits for it); raise it for a slow environment |
+| `App__EnvironmentName` | `unknown` | `local` | `local` | shown in the footer |
+
+Both `Api__*` URLs must be absolute and the timeout positive; otherwise the Web stops at startup (`ValidateOnStart`),
+not on the first request. Logs are the same JSON format as the API's (both call `builder.AddServiceDefaults()`; an architecture test
+checks that every service does).
 
 ## Tests
 

@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\EphemeralEnvs.Contracts\EphemeralEnvs.Contracts.csproj" />
     <ProjectReference Include="..\..\src\EphemeralEnvs.Data\EphemeralEnvs.Data.csproj" />
     <ProjectReference Include="..\..\src\EphemeralEnvs.Domain\EphemeralEnvs.Domain.csproj" />
+    <ProjectReference Include="..\..\src\EphemeralEnvs.ServiceDefaults\EphemeralEnvs.ServiceDefaults.csproj" />
     <ProjectReference Include="..\..\src\EphemeralEnvs.Web\EphemeralEnvs.Web.csproj" />
   </ItemGroup>
 

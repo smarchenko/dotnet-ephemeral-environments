@@ -51,7 +51,7 @@ experiment before the next stage starts. Never deliver several new technologies 
 | 1 | Migrations as a separate step + seed | EF migration bundle, `migrator` image, seed step. **Local dev uses the same path**: compose service `migrator` runs before `api` (`depends_on: condition: service_completed_successfully`), so `docker compose up` = DB → migrate → seed → apps. When running from the IDE: `scripts/db-update.ps1` (`docker compose run --rm migrator`) and `scripts/db-reset.ps1` (drop → migrate → seed). No `EnsureCreated`, no migrate-on-startup even in Dev |
 | 2 | Multi-env locally | Traefik, `<env>.localhost:8080` / `<env>-api.localhost:8080`, shared Postgres with DB-per-env, `deploy`/`destroy -Env x` scripts; try `--scale api=2 web=2` (→ Data Protection keys) |
 | FF1 | Feature flags (config) | **Microsoft.FeatureManagement**, flags from config/env vars (`FeatureManagement__NewWidget=true`). Demo flag: API endpoint/field behind `[FeatureGate]`, new widget version in Web, `/features` endpoint for the JS widget; tests for flag on and off; `deploy -Env x -Flags NewWidget=true` → different flags per local env. Later in 6b: preview flags from PR labels (`flag:NewWidget`). Shows trunk-based dev: merge disabled, enable on the preview |
-| O1 | Observability | `EphemeralEnvs.ServiceDefaults` + OpenTelemetry (ASP.NET Core, HttpClient, Npgsql), Aspire Dashboard, `traceparent` sent from the widget, `deployment.environment` tag |
+| O1 | Observability | `EphemeralEnvs.ServiceDefaults` + OpenTelemetry (ASP.NET Core, HttpClient, Npgsql), Aspire Dashboard, `traceparent` sent from the widget, `deployment.environment` tag; **HTTP resilience** in ServiceDefaults (`Microsoft.Extensions.Http.Resilience`, `AddStandardResilienceHandler` via `ConfigureHttpClientDefaults`: attempt + total timeout, retries with backoff only for safe methods, circuit breaker, all from config; replaces the plain `Api__TimeoutSeconds`), retries visible in traces |
 | 3 | Bruno | Collection with a per-env `baseUrl` |
 | 4a | Migration safety | Expand/contract tool, `[ContractMigration]`, Squawk warnings; demo rename via expand → switch → contract PRs |
 | 4b | API contract safety | **oasdiff**: compare the PR's OpenAPI document with `main`'s; breaking changes (removed endpoint/field, new required param…) fail unless explicitly allowed. The API counterpart of migration-safety |
@@ -104,7 +104,8 @@ runtime.
 │  ├─ EphemeralEnvs.Application/  CQRS: commands + queries and their handlers, read-only DbContext
 │  ├─ EphemeralEnvs.Domain/       entities, no dependencies
 │  ├─ EphemeralEnvs.Data/         DbContext, IEntityTypeConfiguration<>, Migrations/, Npgsql
-│  └─ EphemeralEnvs.Contracts/    DTOs shared by Web and Api
+│  ├─ EphemeralEnvs.Contracts/    DTOs shared by Web and Api
+│  └─ EphemeralEnvs.ServiceDefaults/  shared host setup for Api and Web: JSON logs (stage 0), OpenTelemetry (O1)
 ├─ tests/
 │  └─ EphemeralEnvs.Api.Tests/    WebApplicationFactory + Testcontainers PostgreSQL
 ├─ deploy/local/docker-compose.yml
@@ -115,7 +116,8 @@ runtime.
 ```
 
 References: `Api → Application, Contracts, Domain (only DomainValidationException)`; `Application → Domain, Data, Contracts`; `Data → Domain`;
-`Web → Contracts`. Domain → DTO mapping is written by hand.
+`Web → Contracts`; `Api, Web → ServiceDefaults` (depends on nothing of ours; added 2026-11-13, earlier than O1, to
+remove the duplicated logging setup). Domain → DTO mapping is written by hand.
 
 **CQRS, level 2 (one database, separate read and write models)** — decided 2026-11-13:
 - Controllers depend only on handlers (`ICommandHandler<,>`, `IQueryHandler<,>`); the API project never sees
@@ -184,6 +186,7 @@ Web configuration:
 | `Api__InternalBaseUrl` | `http://api:8080` |
 | `Api__PublicBaseUrl` | `http://localhost:5081` |
 | `App__EnvironmentName` | `local` |
+| `Api__TimeoutSeconds` | `5` (server-side call timeout; added 2026-11-13) |
 
 ### 5.5 Logging
 
