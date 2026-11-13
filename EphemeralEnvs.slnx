@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/EphemeralEnvs.Api/EphemeralEnvs.Api.csproj" />
+    <Project Path="src/EphemeralEnvs.Application/EphemeralEnvs.Application.csproj" />
     <Project Path="src/EphemeralEnvs.Contracts/EphemeralEnvs.Contracts.csproj" />
     <Project Path="src/EphemeralEnvs.Data/EphemeralEnvs.Data.csproj" />
     <Project Path="src/EphemeralEnvs.Domain/EphemeralEnvs.Domain.csproj" />
@@ -8,5 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/EphemeralEnvs.Api.Tests/EphemeralEnvs.Api.Tests.csproj" />
+    <Project Path="tests/EphemeralEnvs.ArchitectureTests/EphemeralEnvs.ArchitectureTests.csproj" />
+    <Project Path="tests/EphemeralEnvs.Domain.Tests/EphemeralEnvs.Domain.Tests.csproj" />
   </Folder>
 </Solution>

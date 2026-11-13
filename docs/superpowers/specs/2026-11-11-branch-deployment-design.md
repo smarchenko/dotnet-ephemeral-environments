@@ -68,6 +68,7 @@ experiment before the next stage starts. Never deliver several new technologies 
 | 8 | Azure DevOps | Same scripts, `ado-` prefix, branch policies, compare with GitHub |
 | 9 | (optional) Azure | Hosting with Bicep vs Terraform |
 | 10 | (optional) Umbraco | Second app on the same infra |
+| C3 | (optional, **last**) Full CQRS with a separate read store | Write side publishes events through an **outbox** → message broker (e.g. RabbitMQ) → projector worker updates a denormalized **read store**; queries read only from it (**eventual consistency**). Per preview env: broker/queues, projector, read store; rebuild projections after migrations; seed both stores. Compare with level 2 (stage 0) |
 
 Topics for later, discussed when their stage comes up: QA access/auth on previews (e.g. basic
 auth), cost/limits (max concurrent envs), whether a shared staging env stays for integration
@@ -98,6 +99,7 @@ runtime.
 ├─ src/
 │  ├─ EphemeralEnvs.Web/          ASP.NET Core MVC (+ wwwroot/js/widget.js), Dockerfile
 │  ├─ EphemeralEnvs.Api/          ASP.NET Core Web API (controllers) + Swagger UI, Dockerfile
+│  ├─ EphemeralEnvs.Application/  CQRS: commands + queries and their handlers, read-only DbContext
 │  ├─ EphemeralEnvs.Domain/       entities, no dependencies
 │  ├─ EphemeralEnvs.Data/         DbContext, IEntityTypeConfiguration<>, Migrations/, Npgsql
 │  └─ EphemeralEnvs.Contracts/    DTOs shared by Web and Api
@@ -110,8 +112,25 @@ runtime.
 └─ EphemeralEnvs.slnx
 ```
 
-References: `Api → Domain, Data, Contracts`; `Data → Domain`; `Web → Contracts`.
-No full Clean Architecture (no Application layer, no CQRS). Domain → DTO mapping is written by hand.
+References: `Api → Application, Contracts, Domain (only DomainValidationException)`; `Application → Domain, Data, Contracts`; `Data → Domain`;
+`Web → Contracts`. Domain → DTO mapping is written by hand.
+
+**CQRS, level 2 (one database, separate read and write models)** — decided 2026-11-13:
+- Controllers depend only on handlers (`ICommandHandler<,>`, `IQueryHandler<,>`); the API project never sees
+  a `DbContext` (no transitive reference to `Data`; guarded by an architecture test).
+- **Write side** (commands, e.g. `CreateProduct`): domain entities through `AppDbContext` with change tracking.
+  A command returns only the new id; the API then reads the result through a query.
+- **Read side** (queries, e.g. `GetProducts`, `GetProductById`): a separate read-only `ReadDbContext`
+  (no tracking, `SaveChanges` throws) over the same tables, projecting straight into DTOs, no domain objects.
+- No MediatR (commercial licence since 2025): plain interfaces, handlers registered in DI.
+- `AppDbContext` owns the migrations; `ReadDbContext` lives in `Application` so `dotnet ef` sees one context.
+- Level 3 (separate read store, eventual consistency) is the optional last stage **C3**.
+- **Domain invariants** (2026-11-13): `Product` validates name/price (incl. at most 2 decimal places — `numeric(18,2)`
+  would silently round) in its constructor and throws
+  `DomainValidationException(field)`; limits are constants in `Product` (used by the EF mapping). DTO attributes stay
+  for friendly API errors; the API maps the domain exception to 400 ValidationProblemDetails; a test keeps both in sync.
+- **Tests:** `tests/EphemeralEnvs.Domain.Tests` (unit) and `tests/EphemeralEnvs.ArchitectureTests` (NetArchTest:
+  layers, CQRS read/write separation, controllers, domain encapsulation).
 
 ### 5.2 Domain
 
@@ -129,6 +148,12 @@ The initial migration `InitialCreate` lives in `EphemeralEnvs.Data`.
 - Swagger UI at `/swagger`, enabled when `Swagger__Enabled=true`. The OpenAPI description shows
   `App__EnvironmentName`.
 - CORS: an explicit list from `Cors__AllowedOrigins` (comma-separated). `*` is never used.
+- **Future updates (decided 2026-11-13, not in stage 0):** when products become editable, use
+  `PUT /products/{id}` with full replacement: `UpdateProductRequest(Name, Price)` → `UpdateProductCommand` → domain
+  method `Product.Update(name, price)` (checks invariants; no public setters) → `SaveChanges`. Optimistic concurrency
+  via Postgres `xmin` as the EF concurrency token: `GET` returns `ETag`, `PUT` requires `If-Match`, a stale version →
+  `412 Precondition Failed`; unknown id → 404. No `PATCH` (JSON Patch would bypass domain methods; Merge Patch needs
+  "missing vs null") until a real need appears; task-based endpoints (`/rename`, `/change-price`) stay an option.
 
 API configuration:
 

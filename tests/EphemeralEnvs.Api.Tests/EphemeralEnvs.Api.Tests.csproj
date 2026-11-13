@@ -9,6 +9,8 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>
 
   <ItemGroup>
@@ -17,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\EphemeralEnvs.Api\EphemeralEnvs.Api.csproj" />
+    <ProjectReference Include="..\..\src\EphemeralEnvs.Contracts\EphemeralEnvs.Contracts.csproj" />
     <ProjectReference Include="..\..\src\EphemeralEnvs.Data\EphemeralEnvs.Data.csproj" />
   </ItemGroup>
 

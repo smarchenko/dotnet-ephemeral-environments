@@ -88,6 +88,7 @@ O2. Grafana (otel-lgtm) on server, per-env dashboards
 8. Azure DevOps pipelines (same scripts, `ado-` prefix, branch policies)
 9. (optional) Azure hosting: Bicep vs Terraform
 10. (optional) Umbraco on same infra
+C3. (optional, LAST, low priority) Full CQRS with separate read store: outbox → broker → projector → read DB, eventual consistency
 
 ## Design (in progress)
 - §1 Repo/projects APPROVED: .NET 10; `src/EphemeralEnvs.Web` (MVC + wwwroot/js/widget.js), `src/EphemeralEnvs.Api`
@@ -115,6 +116,20 @@ O2. Grafana (otel-lgtm) on server, per-env dashboards
 - Naming (2026-11-11): solution `EphemeralEnvs.slnx`, projects/namespaces `EphemeralEnvs.*` (was `Poc.*`),
   DbContext `AppDbContext`. Local DB/user/password `ephemeral_envs` (was `poc`); env vars `EE_DB`,
   `EE_WEB_PORT`, `EE_API_PORT`, `EE_DB_PORT` (were `POC_*`); compose project `ephemeral-envs-local`.
+- CQRS (2026-11-13): user rejected DbContext in API and plain service (= repository in disguise).
+  Chosen **level 2**: one DB, separate write model (commands → domain → AppDbContext) and read model
+  (queries → read-only ReadDbContext → DTO projections); new project `EphemeralEnvs.Application`; no MediatR;
+  Api has no reference to Data (architecture test). Level 3 → optional last stage C3 (user wants to see it, not priority).
+- Domain invariants (2026-11-13): validation also in the **domain** (`Product` ctor: name not blank, ≤200; price
+  0.01…9999999999999999.99, ≤ 2 decimal places) → `DomainValidationException(field)`; DTO: semantic attributes `[ProductName]`/`[Price]` in Contracts (decided 2026-11-13: domain = single source, attributes mirror it once); limits as constants in `Product`, used by EF config;
+  API keeps DTO attributes (friendly 400) + maps DomainValidationException → 400 ProblemDetails; ContractTests (arch) keep
+  attribute limits = domain constants, forbid unbounded string/decimal in `*Request`, controllers take only `*Request` and return only `*Dto` (naming convention: input `*Request`, output `*Dto`, CQRS `*Command`/`*Query` — in README); new `tests/EphemeralEnvs.Domain.Tests` (unit, no Docker).
+  Api references Domain only for the exception (controllers must not use domain types — arch test).
+- Architecture tests (user request 2026-11-13): `tests/EphemeralEnvs.ArchitectureTests` with NetArchTest.eNhancedEdition:
+  layers, controllers, CQRS (query↛AppDbContext, query uses IReadDb not ReadDbContext, command↛read side, handler results never domain types), no public setters in domain.
+- Future product updates (2026-11-13, not stage 0): `PUT /products/{id}` full replacement → `UpdateProductCommand` →
+  `Product.Update(name, price)`; optimistic concurrency via `xmin` (ETag / If-Match → 412); 404 for unknown id; no PATCH
+  for now (task-based endpoints remain an option). Details: spec §5.3.
 - Repos: **GitHub public, personal account** (showcase), repo name **`dotnet-ephemeral-environments`**, remote name `github`. ADO org created closer to stage 8.
   Public-repo security rules are in spec §2 (no secrets/IP in repo, fork PRs never deploy, SSH key only…).
 
@@ -151,5 +166,5 @@ Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/li
 - [ ] Umbraco experiment
 
 ## Next step
-Stage 0 in progress (native). **Tasks 1–2 done** (scaffold + quality baseline; Domain + Data + InitialCreate) — Task 2 + rename `Poc.*`→`EphemeralEnvs.*` verified by user (migration applied to `ephemeral_envs`, container `ee-db`); awaiting user commit.
-Next: Task 3 (Products API + ProblemDetails + Testcontainers tests). Ledger: .superpowers/sdd/2026-11-11-stage-0-app-skeleton/progress.md
+Stage 0 in progress (native). **Tasks 1–3 done** (scaffold; Domain + Data + InitialCreate; Products API + ProblemDetails + Testcontainers tests; reworked to CQRS level 2 with `EphemeralEnvs.Application`; domain invariants; architecture tests (NetArchTest); price ≤ 2 decimals; read side read-only at 3 levels (IReadDb for handlers, ReadDbContext NoTracking + SaveChanges throws, DB session default_transaction_read_only — decided 2026-11-13); `[ProductName]`/`[Price]` + contract tests; queries project to DTO, results never domain types (decided 2026-11-13: standard .NET projection, no separate read model; Dapper-style read model → C3); 54 tests) — Task 3 awaiting user review/commit. Tests need no Docker settings: PostgresFixture uses the Linux engine pipe on Windows (DOCKER_HOST in shell breaks the docker CLI — 2 vs 4 slashes).
+Next: Task 4 (health probes, CORS, Swagger flag, environment name, JSON logs). Ledger: .superpowers/sdd/2026-11-11-stage-0-app-skeleton/progress.md

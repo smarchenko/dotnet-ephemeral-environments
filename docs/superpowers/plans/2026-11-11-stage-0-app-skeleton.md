@@ -5,7 +5,8 @@
 **Goal:** A runnable .NET 10 MVC Web + Web API + PostgreSQL skeleton in one env via docker compose.
 It includes Swagger, CORS, health probes, a JS widget, runtime config and a code-quality baseline.
 
-**Architecture:** `EphemeralEnvs.Api` (controllers) uses `EphemeralEnvs.Data` (EF Core/Npgsql) over `EphemeralEnvs.Domain`, and
+**Architecture:** (amended 2026-11-13, CQRS level 2 — see spec §5.1) `EphemeralEnvs.Api` (controllers) calls command/query handlers in
+`EphemeralEnvs.Application`, which uses `EphemeralEnvs.Data` (EF Core/Npgsql) over `EphemeralEnvs.Domain`; the Api never sees a DbContext. It
 exposes DTOs from `EphemeralEnvs.Contracts`. `EphemeralEnvs.Web` (MVC) calls the API server-side through a typed
 HttpClient. Its JS widget calls the API from the browser, using a URL rendered into a `<meta>` tag.
 All env-specific values are runtime env vars, and images are built once.
@@ -25,7 +26,7 @@ Testcontainers.PostgreSql, Docker Compose.
   stable package versions (EF Core/Npgsql 10.x).
 - Build must have **0 warnings** (`TreatWarningsAsErrors=true`); `dotnet format --verify-no-changes` must pass.
 - Every Docker command uses the Linux engine: `$env:DOCKER_CONTEXT='desktop-linux'`.
-  Tests: `$env:DOCKER_HOST='npipe:////./pipe/dockerDesktopLinuxEngine'` (verify in Task 3).
+  Tests: no setting needed — `PostgresFixture` targets `npipe://./pipe/dockerDesktopLinuxEngine` on Windows (Task 3 ruling).
 - **No migrations on app startup — ever** (permanent rule). In stage 0 *only*, the schema is applied
   by hand (`dotnet ef database update`) or in the test fixture. From stage 1 on, migrations run as a
   separate deploy step (EF migration bundle in a `migrator` container), and the pipelines (stage 5+)
@@ -176,6 +177,8 @@ deploy/local/docker-compose.yml
 - API wiring in Program: `AddControllers()`, `AddProblemDetails()`, `UseExceptionHandler()`,
   `UseStatusCodePages()`; DbContext registered with
   `AddDbContext<AppDbContext>((sp, o) => o.UseNpgsql(sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")))`.
+  **Amended (CQRS level 2):** registration moved to `EphemeralEnvs.Application.AddApplication()`; controller uses handlers;
+  `ReadDbContext` (read-only) for queries; `ArchitectureTests` + `DisableTransitiveProjectReferences` keep Data out of Api.
 
 - [ ] **Step 1: Verify Testcontainers reaches the Linux engine.** Write the fixture and one trivial test
   that starts the container.
@@ -218,6 +221,8 @@ deploy/local/docker-compose.yml
 - Health: `/health/live` with `Predicate = _ => false` (no checks); `/health/ready` with a DB check
   tagged `ready` (`AddDbContextCheck<AppDbContext>(tags: ["ready"])`, package
   `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore`), filtered by that tag.
+  **Amended:** the Api cannot see `AppDbContext` — expose the check from Application
+  (e.g. `IHealthChecksBuilder.AddDatabaseCheck()` extension), the Api only calls it.
 - Swagger: `AddOpenApi()` with a document transformer that sets `Info.Description =
   $"Environment: {EnvironmentName}"`. When `Swagger:Enabled` is true, map `/openapi/v1.json` and
   `UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "v1"))` at `/swagger`.

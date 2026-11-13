@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EphemeralEnvs.Api.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EphemeralEnvs.Contracts\EphemeralEnvs.Contracts.csproj" />
+    <ProjectReference Include="..\EphemeralEnvs.Data\EphemeralEnvs.Data.csproj" />
+    <ProjectReference Include="..\EphemeralEnvs.Domain\EphemeralEnvs.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
