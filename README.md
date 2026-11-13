@@ -93,6 +93,8 @@ the numbers. Contract tests guard this:
 - the attributes' limits equal the `Product` constants;
 - every `string` in a `*Request` has a length limit and every `decimal` has a range (a new `RenameProductRequest`
   with a bare `string NewName` fails the build's tests, whatever the property is called);
+- validation attributes sit on properties, not on positional-record constructor parameters (MVC would validate
+  those, but the OpenAPI generator ignores them and the schema would lose `maxLength`/`minimum`/`maximum`);
 - controller actions take only `*Request` types from Contracts (so a new input contract can't dodge the rule above)
   and return only `*Dto` types (unwrapping `Task<>`, `ActionResult<>`, arrays and other generics).
 
@@ -156,10 +158,29 @@ Endpoints (errors are returned as ProblemDetails, `application/problem+json`):
 | `GET /products/{id}` | 200, or 404 if not found / not a GUID |
 | `POST /products` `{"name":"Pen","price":1.50}` | 201 + `Location: /products/{id}`; 400 if `name` is empty/whitespace/longer than 200 or `price` is not in 0.01 … 9999999999999999.99 or has more than 2 decimal places (`1.005` → 400, `1.500` is fine) |
 
+| `GET /health/live` | 200 `Healthy` while the process answers; never checks the DB (a restart would not fix a DB outage) |
+| `GET /health/ready` | 200 `Healthy` when the DB is reachable, 503 `Unhealthy` otherwise (deploy waits for it) |
+| `GET /swagger` | Swagger UI, only when `Swagger__Enabled=true` (otherwise 404); document at `/openapi/v1.json`, its description shows `Environment: <App__EnvironmentName>` |
+
 ```powershell
 Invoke-RestMethod -Method Post http://localhost:5136/products -ContentType 'application/json' -Body '{"name":"Pen","price":1.50}'
 Invoke-RestMethod http://localhost:5136/products
+Invoke-RestMethod http://localhost:5136/health/ready
+Start-Process http://localhost:5136/swagger
 ```
+
+API configuration (env vars; `__` = section separator):
+
+| Key | Default (`appsettings.json`) | `Development` | Meaning |
+|---|---|---|---|
+| `ConnectionStrings__Default` | — | `Host=localhost;Port=5432;Database=ephemeral_envs;…` | PostgreSQL |
+| `Cors__AllowedOrigins` | empty (no cross-origin calls) | `http://localhost:5080` | comma-separated origins of the Web; `*` is rejected at startup |
+| `Swagger__Enabled` | `false` | `true` | a flag, not tied to the ASP.NET Core environment: a preview env runs as `Production` and can still show Swagger |
+| `App__EnvironmentName` | `unknown` | `local` | shown in the OpenAPI description (a preview env will use its branch slug) |
+
+**Logs** go to stdout as JSON, one object per line, with `TraceId`/`SpanId`/`ParentId` of the request (an incoming
+W3C `traceparent` header is continued). EF Core SQL commands are logged only in `Development` (in other environments
+`/health/ready` would log `SELECT 1` on every probe).
 
 ## Tests
 

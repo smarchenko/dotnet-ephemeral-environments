@@ -5,7 +5,8 @@ namespace EphemeralEnvs.Contracts;
 /// <summary>
 /// A product name: required, not whitespace-only, at most <see cref="MaxLength"/> characters.
 /// Mirrors <c>Product.NameMaxLength</c> in the domain (checked by ContractTests).
-/// Derives from <see cref="StringLengthAttribute"/> so OpenAPI still emits <c>maxLength</c>.
+/// Derives from <see cref="StringLengthAttribute"/> so OpenAPI still emits <c>maxLength</c>
+/// (only when placed on a property, see CreateProductRequest).
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Parameter | AttributeTargets.Field)]
 public sealed class ProductNameAttribute : StringLengthAttribute

@@ -28,7 +28,7 @@ public sealed class ProductsTests : IClassFixture<PostgresFixture>, IDisposable
     [Fact]
     public async Task Post_ValidProduct_Returns201_AndIsRetrievableById_AndInList()
     {
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest("Pen", 1.50m));
+        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest { Name = "Pen", Price = 1.50m });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         Assert.NotNull(response.Headers.Location);
@@ -49,7 +49,7 @@ public sealed class ProductsTests : IClassFixture<PostgresFixture>, IDisposable
     [Fact]
     public async Task Post_EmptyName_Returns400ProblemDetails()
     {
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest("", 1m));
+        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest { Name = "", Price = 1m });
 
         await AssertValidationProblemAsync(response, "Name");
     }
@@ -57,7 +57,7 @@ public sealed class ProductsTests : IClassFixture<PostgresFixture>, IDisposable
     [Fact]
     public async Task Post_WhitespaceName_Returns400()
     {
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest("   ", 1m));
+        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest { Name = "   ", Price = 1m });
 
         await AssertValidationProblemAsync(response, "Name");
     }
@@ -65,7 +65,7 @@ public sealed class ProductsTests : IClassFixture<PostgresFixture>, IDisposable
     [Fact]
     public async Task Post_NameOf201Chars_Returns400()
     {
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest(new string('a', 201), 1m));
+        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest { Name = new string('a', 201), Price = 1m });
 
         await AssertValidationProblemAsync(response, "Name");
     }
@@ -73,7 +73,7 @@ public sealed class ProductsTests : IClassFixture<PostgresFixture>, IDisposable
     [Fact]
     public async Task Post_ZeroPrice_Returns400()
     {
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest("Pen", 0m));
+        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest { Name = "Pen", Price = 0m });
 
         await AssertValidationProblemAsync(response, "Price");
     }
@@ -82,7 +82,7 @@ public sealed class ProductsTests : IClassFixture<PostgresFixture>, IDisposable
     public async Task Post_PriceTooLarge_Returns400()
     {
         // Does not fit numeric(18,2): must be rejected by validation, not fail in the database (500).
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest("Pen", 100_000_000_000_000_000m));
+        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest { Name = "Pen", Price = 100_000_000_000_000_000m });
 
         await AssertValidationProblemAsync(response, "Price");
     }
@@ -91,7 +91,7 @@ public sealed class ProductsTests : IClassFixture<PostgresFixture>, IDisposable
     public async Task Post_PriceWithThreeDecimals_Returns400()
     {
         // numeric(18,2) would silently store 1.01 instead of 1.005.
-        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest("Pen", 1.005m));
+        var response = await _client.PostAsJsonAsync("/products", new CreateProductRequest { Name = "Pen", Price = 1.005m });
 
         await AssertValidationProblemAsync(response, "Price");
     }

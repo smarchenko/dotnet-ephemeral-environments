@@ -5,7 +5,8 @@ namespace EphemeralEnvs.Contracts;
 /// <summary>
 /// A price: from <see cref="MinValue"/> to <see cref="MaxValue"/> (fits <c>numeric(18,2)</c>),
 /// at most <see cref="MaxDecimalPlaces"/> decimal places. Mirrors the domain limits in <c>Product</c>
-/// (checked by ContractTests). Derives from <see cref="RangeAttribute"/> so OpenAPI still emits min/max.
+/// (checked by ContractTests). Derives from <see cref="RangeAttribute"/> so OpenAPI still emits min/max
+/// (only when placed on a property, see CreateProductRequest).
 /// </summary>
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Parameter | AttributeTargets.Field)]
 public sealed class PriceAttribute : RangeAttribute

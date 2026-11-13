@@ -38,7 +38,7 @@ public sealed class ContractTests
         // A new request with a bare `string NewName` fails here, whatever the property is called.
         var unbounded = RequestTypes()
             .SelectMany(t => t.GetProperties(BindingFlags.Public | BindingFlags.Instance).Select(p => (Type: t, Property: p)))
-            .Where(x => !IsBounded(x.Type, x.Property))
+            .Where(x => !IsBounded(x.Property))
             .Select(x => $"{x.Type.Name}.{x.Property.Name}")
             .ToArray();
 
@@ -46,6 +46,20 @@ public sealed class ContractTests
             unbounded.Length == 0,
             "Every string needs [ProductName]/[StringLength]/[MaxLength], every decimal needs [Price]/[Range]. " +
             $"Unbounded: {string.Join(", ", unbounded)}");
+    }
+
+    [Fact]
+    public void Requests_DeclareValidationOnProperties_NotConstructorParameters()
+    {
+        // MVC validates attributes on a positional record's parameters, but the OpenAPI generator ignores them:
+        // the schema would silently lose maxLength/minimum/maximum.
+        var onParameters = RequestTypes()
+            .SelectMany(t => t.GetConstructors().SelectMany(c => c.GetParameters()).Select(p => (Type: t, Parameter: p)))
+            .Where(x => x.Parameter.GetCustomAttributes<ValidationAttribute>().Any())
+            .Select(x => $"{x.Type.Name}({x.Parameter.Name})")
+            .ToArray();
+
+        Assert.Empty(onParameters);
     }
 
     [Fact]
@@ -96,17 +110,10 @@ public sealed class ContractTests
             .Where(t => t.IsClass && t.Name.EndsWith("Request", StringComparison.Ordinal))
             .ToArray();
 
-    private static bool IsBounded(Type type, PropertyInfo property)
+    private static bool IsBounded(PropertyInfo property)
     {
         var propertyType = Nullable.GetUnderlyingType(property.PropertyType) ?? property.PropertyType;
-
-        // Positional records keep the attributes on the constructor parameter, not on the property.
-        var attributes = property.GetCustomAttributes<ValidationAttribute>()
-            .Concat(type.GetConstructors()
-                .SelectMany(c => c.GetParameters())
-                .Where(p => p.Name == property.Name)
-                .SelectMany(p => p.GetCustomAttributes<ValidationAttribute>()))
-            .ToArray();
+        var attributes = property.GetCustomAttributes<ValidationAttribute>().ToArray();
 
         if (propertyType == typeof(string))
         {

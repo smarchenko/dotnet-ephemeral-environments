@@ -66,10 +66,11 @@ push updates it → PR closed/merged → env destroyed.
 - IaC for Hetzner: **Terraform** (`hcloud` provider) + **cloud-init** for server setup.
   Bicep = Azure-only; stage 9 may compare Terraform vs Bicep on Azure.
 
-## Stage roadmap (APPROVED 2026-11-11)
+## Stage roadmap (APPROVED 2026-11-11; FF1/FF2 added 2026-11-13)
 0. App skeleton: MVC Web + API (Swagger) + EF Core/Postgres + JS widget + CORS + runtime config; one env via docker compose
 1. Migrations as separate step (EF migration bundle `migrator` image) + seed
 2. Multi-env locally: Traefik, `<env>.localhost`/`<env>-api.localhost`, shared Postgres DB-per-env, `deploy`/`destroy -Env x` scripts
+FF1. Feature flags via config: Microsoft.FeatureManagement, demo flag in API ([FeatureGate]) + Web widget + `/features`, tests on/off, `deploy -Flags`; PR-label flags later in 6b (added 2026-11-13)
 O1. OpenTelemetry + ServiceDefaults + Aspire Dashboard + traceparent from widget
 3. Bruno collection (per-env baseUrl)
 4a. migration-safety check (EF ops expand/contract + `[ContractMigration]` + Squawk warnings)
@@ -81,6 +82,7 @@ AI. (optional) AI code review
 X. (optional) Playwright E2E, SBOM, PR title convention, license check
 6a. Hetzner VPS via Terraform + cloud-init (wildcard DNS, TLS) + terraform fmt/validate, tflint, trivy config
 6b. Preview deploy from GitHub on PR open/push/close + manual re-run + post-deploy smoke (health + Bruno `bru run`)
+FF2. (optional) Runtime flags: OpenFeature + flagd or Unleash/GrowthBook, toggle without redeploy, % rollout (added 2026-11-13)
 7. Nightly cleanup
 K1. Helm chart + local k3d (namespace per env, 2 replicas, probes) + helm lint, kubeconform
 K2. k3s on Hetzner + GitHub preview deploy to k8s
@@ -166,5 +168,6 @@ Deferred topics (discuss at relevant stage): QA access/auth on previews, cost/li
 - [ ] Umbraco experiment
 
 ## Next step
-Stage 0 in progress (native). **Tasks 1–3 done** (scaffold; Domain + Data + InitialCreate; Products API + ProblemDetails + Testcontainers tests; reworked to CQRS level 2 with `EphemeralEnvs.Application`; domain invariants; architecture tests (NetArchTest); price ≤ 2 decimals; read side read-only at 3 levels (IReadDb for handlers, ReadDbContext NoTracking + SaveChanges throws, DB session default_transaction_read_only — decided 2026-11-13); `[ProductName]`/`[Price]` + contract tests; queries project to DTO, results never domain types (decided 2026-11-13: standard .NET projection, no separate read model; Dapper-style read model → C3); 54 tests) — Task 3 awaiting user review/commit. Tests need no Docker settings: PostgresFixture uses the Linux engine pipe on Windows (DOCKER_HOST in shell breaks the docker CLI — 2 vs 4 slashes).
-Next: Task 4 (health probes, CORS, Swagger flag, environment name, JSON logs). Ledger: .superpowers/sdd/2026-11-11-stage-0-app-skeleton/progress.md
+Stage 0 in progress (native). **Tasks 1–3 done and committed** (bf2cedf: scaffold; Domain + Data + InitialCreate; Products API, CQRS level 2, domain invariants, architecture + contract tests, read side read-only at 3 levels).
+**Task 4 done, awaiting user review/commit:** `/health/live` (no checks) + `/health/ready` (DB check from Application `AddDatabaseCheck`), CORS from `Cors__AllowedOrigins` (`*` rejected), Swagger UI + `/openapi/v1.json` behind `Swagger__Enabled` with `Environment: <App__EnvironmentName>` in the description, JSON console logs with TraceId/SpanId/ParentId; `UseHttpsRedirection` removed (TLS ends at the proxy); EF SQL logs only in Development; `CreateProductRequest` became a property record so OpenAPI shows maxLength/min/max (+ contract rule: attributes on properties); Swashbuckle.AspNetCore.SwaggerUI 10.3.1 (11.0.1 did not compile against our SDK). 70 tests.
+Next: Task 5 (Web). Ledger: .superpowers/sdd/2026-11-11-stage-0-app-skeleton/progress.md

@@ -43,7 +43,7 @@ public sealed class DomainValidationTests(PostgresFixture postgres) : IClassFixt
             configureServices: services => services.AddScoped<ICommandHandler<CreateProductCommand, Guid>, RejectingHandler>());
         using var client = factory.CreateClient();
 
-        var response = await client.PostAsJsonAsync("/products", new CreateProductRequest("Pen", 1m));
+        var response = await client.PostAsJsonAsync("/products", new CreateProductRequest { Name = "Pen", Price = 1m });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
