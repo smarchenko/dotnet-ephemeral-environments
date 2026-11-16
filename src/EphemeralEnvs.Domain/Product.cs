@@ -18,15 +18,33 @@ public sealed class Product
     public const decimal MaxPrice = 9_999_999_999_999_999.99m;
 
     public Product(string name, decimal price, DateTimeOffset createdAt)
+        : this(Guid.CreateVersion7(), name, price, createdAt)
     {
+    }
+
+    private Product(Guid id, string name, decimal price, DateTimeOffset createdAt)
+    {
+        if (id == Guid.Empty)
+        {
+            throw new DomainValidationException(nameof(Id), "Id is required.");
+        }
+
         EnsureValidName(name);
         EnsureValidPrice(price);
 
-        Id = Guid.CreateVersion7();
+        Id = id;
         Name = name;
         Price = price;
         CreatedAt = createdAt;
     }
+
+    /// <summary>
+    /// Creates a product with a known id, for seed data that must have the same ids in every environment.
+    /// Same rules as the constructor; normal code (the API) uses the constructor.
+    /// Internal: visible only to EphemeralEnvs.DbTool and the domain tests (see the csproj).
+    /// </summary>
+    internal static Product CreateSeeded(Guid id, string name, decimal price, DateTimeOffset createdAt) =>
+        new(id, name, price, createdAt);
 
     // Used by EF Core when materializing entities.
     private Product()

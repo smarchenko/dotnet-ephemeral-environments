@@ -1,2 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <!-- Product.CreateSeeded (fixed ids) is internal: only the seed tool and the domain tests may call it,
+         so the API/Application cannot let clients choose ids by accident. Checked by the compiler. -->
+    <InternalsVisibleTo Include="EphemeralEnvs.DbTool" />
+    <InternalsVisibleTo Include="EphemeralEnvs.Domain.Tests" />
+  </ItemGroup>
+
 </Project>

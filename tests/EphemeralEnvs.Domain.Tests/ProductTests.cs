@@ -3,6 +3,7 @@ namespace EphemeralEnvs.Domain.Tests;
 public sealed class ProductTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 13, 10, 0, 0, TimeSpan.Zero);
+    private static readonly Guid SeedId = Guid.Parse("0196a000-0000-7000-8000-000000000001");
 
     [Fact]
     public void Create_ValidValues_SetsProperties()
@@ -94,5 +95,40 @@ public sealed class ProductTests
         var product = new Product("Pen", value, Now);
 
         Assert.Equal(1.5m, product.Price);
+    }
+
+    [Fact]
+    public void CreateSeeded_ValidValues_KeepsGivenId()
+    {
+        var product = Product.CreateSeeded(SeedId, "Pen", 1.50m, Now);
+
+        Assert.Equal(SeedId, product.Id);
+        Assert.Equal("Pen", product.Name);
+        Assert.Equal(1.50m, product.Price);
+        Assert.Equal(Now, product.CreatedAt);
+    }
+
+    [Fact]
+    public void CreateSeeded_EmptyId_Throws()
+    {
+        var ex = Assert.Throws<DomainValidationException>(() => Product.CreateSeeded(Guid.Empty, "Pen", 1m, Now));
+
+        Assert.Equal(nameof(Product.Id), ex.Field);
+    }
+
+    [Fact]
+    public void CreateSeeded_InvalidName_Throws()
+    {
+        var ex = Assert.Throws<DomainValidationException>(() => Product.CreateSeeded(SeedId, " ", 1m, Now));
+
+        Assert.Equal(nameof(Product.Name), ex.Field);
+    }
+
+    [Fact]
+    public void CreateSeeded_InvalidPrice_Throws()
+    {
+        var ex = Assert.Throws<DomainValidationException>(() => Product.CreateSeeded(SeedId, "Pen", 0m, Now));
+
+        Assert.Equal(nameof(Product.Price), ex.Field);
     }
 }
