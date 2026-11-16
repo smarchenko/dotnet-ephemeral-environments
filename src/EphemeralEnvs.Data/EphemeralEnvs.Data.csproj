@@ -1,6 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <!-- The __db_tool_history journal (DbToolHistoryEntry, AppDbContext.DbToolHistory) is internal: only the seed/backfill
+         tool and its tests may read or write it, so no other code can mark an operation as applied. -->
+    <InternalsVisibleTo Include="EphemeralEnvs.DbTool" />
+    <InternalsVisibleTo Include="EphemeralEnvs.DbTool.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
