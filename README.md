@@ -24,6 +24,74 @@ and the current progress in [`docs/STATUS.md`](docs/STATUS.md).
 
 - Local .NET tools (`dotnet-ef`): `dotnet tool restore`
 
+## Stage 0: how to run
+
+One environment (Web + API + PostgreSQL) on this machine, from `deploy/local/docker-compose.yml`
+(compose project `ephemeral-envs-local`). Images are built from `src/EphemeralEnvs.Api/Dockerfile` and
+`src/EphemeralEnvs.Web/Dockerfile` (multi-stage `sdk:10.0` → `aspnet:10.0`, port 8080, non-root user).
+
+| Container | Host port (override) | What |
+|---|---|---|
+| `web` | `5080` (`EE_WEB_PORT`) | MVC Web; calls the API at `http://api:8080` inside the compose network |
+| `api` | `5081` (`EE_API_PORT`) | Web API; CORS allows `http://localhost:$EE_WEB_PORT` |
+| `postgres` | `5432` (`EE_DB_PORT`) | PostgreSQL 17, data in volume `pgdata` |
+
+**Quick path** (does steps 1–2 below and prints the URLs; safe to re-run, migrations already applied are skipped):
+
+```powershell
+./deploy/local/up.ps1                  # ports: -WebPort 5080 -ApiPort 5081 -DbPort 5432 (or EE_*_PORT variables)
+./deploy/local/up.ps1 -DbPort 5433     # if 5432 is taken by another Postgres
+./deploy/local/down.ps1                # stop, keep the database volume
+./deploy/local/down.ps1 -RemoveData    # stop and drop the database volume
+```
+
+The scripts set `DOCKER_CONTEXT=desktop-linux` themselves and restore your shell's variables afterwards.
+A busy port makes `up.ps1` stop with Docker's "port is already allocated" error: pick another port.
+
+**By hand:**
+
+1. Start everything (the first build takes a few minutes):
+
+   ```powershell
+   $env:DOCKER_CONTEXT = 'desktop-linux'
+   # $env:EE_DB_PORT = '5433'   # if 5432 is taken (another Postgres); same for EE_WEB_PORT / EE_API_PORT
+   docker compose -f deploy/local/docker-compose.yml up --build -d
+   docker compose -f deploy/local/docker-compose.yml ps     # 3 containers, postgres "healthy"
+   ```
+
+2. Apply the schema (the apps never migrate on startup; stage 1 adds a `migrator` step):
+
+   ```powershell
+   dotnet tool restore
+   $env:EE_DB = "Host=localhost;Port=$(if ($env:EE_DB_PORT) { $env:EE_DB_PORT } else { 5432 });Database=ephemeral_envs;Username=ephemeral_envs;Password=ephemeral_envs"
+   dotnet ef database update --project src/EphemeralEnvs.Data      # → Done.
+   ```
+
+3. <http://localhost:5080>: the list is rendered server-side; the footer shows `Environment: local`.
+4. <http://localhost:5080/Home/Widget>: add a product; DevTools → Network shows the cross-origin calls to `:5081`.
+5. <http://localhost:5081/swagger> works; `curl http://localhost:5081/health/live` and `/health/ready` return 200.
+6. Database down:
+
+   ```powershell
+   docker compose -f deploy/local/docker-compose.yml stop postgres
+   curl -i http://localhost:5081/health/ready    # 503
+   curl -i http://localhost:5081/health/live     # 200
+   # http://localhost:5080 → "API is unavailable right now." (the API returned 500 ProblemDetails)
+   docker compose -f deploy/local/docker-compose.yml start postgres
+   ```
+
+7. One request through both services: open <http://localhost:5080>, then
+
+   ```powershell
+   docker compose -f deploy/local/docker-compose.yml logs web api | Select-String '"TraceId":"<id>"'
+   ```
+
+   Take `<id>` from the web's `Request finished` line: the same `TraceId` appears in the API's lines (W3C `traceparent`).
+8. Code checks: `dotnet test`, `dotnet build` (no warnings), `dotnet format --verify-no-changes` (see below).
+
+Stop, keeping the data: `docker compose -f deploy/local/docker-compose.yml down`.
+Tear down including the database volume: `docker compose -f deploy/local/docker-compose.yml down -v`.
+
 ## Repository layout
 
 | Path | What |
@@ -38,6 +106,8 @@ and the current progress in [`docs/STATUS.md`](docs/STATUS.md).
 | `tests/EphemeralEnvs.Api.Tests` | API integration tests (in-memory API + PostgreSQL in Docker) |
 | `tests/EphemeralEnvs.Domain.Tests` | Domain unit tests (invariants), no Docker |
 | `tests/EphemeralEnvs.ArchitectureTests` | Architecture rules (layers, CQRS, domain, contracts), no Docker |
+| `src/*/Dockerfile` | Images of Api and Web (build context = repo root) |
+| `deploy/local/` | Stage 0 local environment: `docker-compose.yml` (web + api + postgres), `up.ps1` / `down.ps1` |
 | `docs/` | Status, spec, plans |
 
 ### Architecture: CQRS (one database, separate read and write models)

@@ -1,0 +1,16 @@
+# Build context = repo root. Only what `dotnet publish` of src/ needs goes in.
+**/bin/
+**/obj/
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+.superpowers/
+tests/
+docs/
+deploy/
+**/*.user
+**/Properties/launchSettings.json
+**/appsettings.Development.json
+README.md

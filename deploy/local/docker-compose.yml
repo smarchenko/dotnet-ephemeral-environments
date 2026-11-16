@@ -1,0 +1,57 @@
+# Stage 0: one environment (Web + API + PostgreSQL) on this machine.
+#   $env:DOCKER_CONTEXT='desktop-linux'
+#   docker compose -f deploy/local/docker-compose.yml up --build -d
+# Host ports: EE_WEB_PORT (5080), EE_API_PORT (5081), EE_DB_PORT (5432).
+# The schema is applied by hand (README "Stage 0: how to run"); the apps never migrate on startup.
+name: ephemeral-envs-local
+
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: ephemeral_envs
+      POSTGRES_USER: ephemeral_envs
+      POSTGRES_PASSWORD: ephemeral_envs
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${EE_DB_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ephemeral_envs -d ephemeral_envs"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ../..
+      dockerfile: src/EphemeralEnvs.Api/Dockerfile
+    ports:
+      - "${EE_API_PORT:-5081}:8080"
+    environment:
+      ConnectionStrings__Default: Host=postgres;Database=ephemeral_envs;Username=ephemeral_envs;Password=ephemeral_envs
+      # The browser's origin is the Web as seen from the host.
+      Cors__AllowedOrigins: http://localhost:${EE_WEB_PORT:-5080}
+      Swagger__Enabled: "true"
+      App__EnvironmentName: local
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../..
+      dockerfile: src/EphemeralEnvs.Web/Dockerfile
+    ports:
+      - "${EE_WEB_PORT:-5080}:8080"
+    environment:
+      # Server-side calls stay inside the compose network; the browser uses the host port.
+      Api__InternalBaseUrl: http://api:8080
+      Api__PublicBaseUrl: http://localhost:${EE_API_PORT:-5081}
+      Api__TimeoutSeconds: "5"
+      App__EnvironmentName: local
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
