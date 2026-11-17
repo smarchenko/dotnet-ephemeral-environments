@@ -9,6 +9,7 @@ internal static class Assemblies
     public static readonly Assembly Application = typeof(Application.DependencyInjection).Assembly;
     public static readonly Assembly Contracts = typeof(Contracts.ProductDto).Assembly;
     public static readonly Assembly Data = typeof(Data.AppDbContext).Assembly;
+    public static readonly Assembly DbTool = typeof(DbTool.DbToolCli).Assembly;
     public static readonly Assembly Domain = typeof(Domain.Product).Assembly;
     public static readonly Assembly ServiceDefaults = typeof(ServiceDefaults.ServiceDefaultsExtensions).Assembly;
     public static readonly Assembly Web = typeof(Web.Controllers.HomeController).Assembly;
@@ -21,6 +22,7 @@ internal static class Ns
     public const string Application = "EphemeralEnvs.Application";
     public const string Contracts = "EphemeralEnvs.Contracts";
     public const string Data = "EphemeralEnvs.Data";
+    public const string DbTool = "EphemeralEnvs.DbTool";
     public const string Domain = "EphemeralEnvs.Domain";
     public const string Web = "EphemeralEnvs.Web";
 

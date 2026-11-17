@@ -4,6 +4,7 @@
     <Project Path="src/EphemeralEnvs.Application/EphemeralEnvs.Application.csproj" />
     <Project Path="src/EphemeralEnvs.Contracts/EphemeralEnvs.Contracts.csproj" />
     <Project Path="src/EphemeralEnvs.Data/EphemeralEnvs.Data.csproj" />
+    <Project Path="src/EphemeralEnvs.DbTool/EphemeralEnvs.DbTool.csproj" />
     <Project Path="src/EphemeralEnvs.Domain/EphemeralEnvs.Domain.csproj" />
     <Project Path="src/EphemeralEnvs.ServiceDefaults/EphemeralEnvs.ServiceDefaults.csproj" />
     <Project Path="src/EphemeralEnvs.Web/EphemeralEnvs.Web.csproj" />
@@ -11,6 +12,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/EphemeralEnvs.Api.Tests/EphemeralEnvs.Api.Tests.csproj" />
     <Project Path="tests/EphemeralEnvs.ArchitectureTests/EphemeralEnvs.ArchitectureTests.csproj" />
+    <Project Path="tests/EphemeralEnvs.DbTool.Tests/EphemeralEnvs.DbTool.Tests.csproj" />
     <Project Path="tests/EphemeralEnvs.Domain.Tests/EphemeralEnvs.Domain.Tests.csproj" />
   </Folder>
 </Solution>

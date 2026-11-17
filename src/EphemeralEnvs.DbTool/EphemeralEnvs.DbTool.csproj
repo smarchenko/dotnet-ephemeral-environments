@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- One-off database operations, run as deploy steps from the `migrator` image: `seed` (optionally with the restore flag) now, `backfill` in stage 4c.
+       A composition root of its own (like the Api): Domain + Data + ServiceDefaults only. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="EphemeralEnvs.DbTool.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\EphemeralEnvs.Data\EphemeralEnvs.Data.csproj" />
+    <ProjectReference Include="..\EphemeralEnvs.Domain\EphemeralEnvs.Domain.csproj" />
+    <ProjectReference Include="..\EphemeralEnvs.ServiceDefaults\EphemeralEnvs.ServiceDefaults.csproj" />
+  </ItemGroup>
+
+</Project>

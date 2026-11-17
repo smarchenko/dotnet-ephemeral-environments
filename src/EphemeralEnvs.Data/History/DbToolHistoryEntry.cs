@@ -21,7 +21,7 @@ internal sealed class DbToolHistoryEntry
         AppliedAt = appliedAt;
     }
 
-    /// <summary>Operation name, e.g. the seed set <c>products-v1</c>. Primary key.</summary>
+    /// <summary>Operation name, e.g. the seed set <c>0001-products</c>. Primary key.</summary>
     public string Name { get; private set; }
 
     /// <summary>See <see cref="DbToolHistoryKinds"/>.</summary>

@@ -4,8 +4,8 @@ namespace EphemeralEnvs.ArchitectureTests;
 
 /// <summary>
 /// Allowed dependencies: Api → Application, Contracts, Domain (exceptions only); Application → Domain, Data, Contracts;
-/// Data → Domain; Web → Contracts. Domain, Contracts and ServiceDefaults depend on nothing of ours;
-/// Api and Web both use ServiceDefaults.
+/// Data → Domain; Web → Contracts; DbTool (seed tool) → Domain, Data. Domain, Contracts and ServiceDefaults depend on
+/// nothing of ours; Api, Web and DbTool all use ServiceDefaults.
 /// </summary>
 public sealed class LayerTests
 {
@@ -22,7 +22,7 @@ public sealed class LayerTests
     {
         ArchAssert.Passes(
             Types.InAssembly(Assemblies.Domain).ShouldNot().HaveDependencyOnAny(
-                Ns.Api, Ns.Application, Ns.Contracts, Ns.Data, Ns.Web, Ns.AspNetCore, Ns.EntityFrameworkCore, Ns.Npgsql),
+                Ns.Api, Ns.Application, Ns.Contracts, Ns.Data, Ns.DbTool, Ns.Web, Ns.AspNetCore, Ns.EntityFrameworkCore, Ns.Npgsql),
             "The domain is plain C#: no persistence, web or other layers.");
     }
 
@@ -39,7 +39,7 @@ public sealed class LayerTests
     public void Data_DoesNotDependOn_UpperLayers()
     {
         ArchAssert.Passes(
-            Types.InAssembly(Assemblies.Data).ShouldNot().HaveDependencyOnAny(Ns.Api, Ns.Application, Ns.Contracts, Ns.Web),
+            Types.InAssembly(Assemblies.Data).ShouldNot().HaveDependencyOnAny(Ns.Api, Ns.Application, Ns.Contracts, Ns.DbTool, Ns.Web),
             "Persistence knows only the domain.");
     }
 
@@ -61,6 +61,15 @@ public sealed class LayerTests
     }
 
     [Fact]
+    public void DbTool_DependsOnlyOnDomainDataServiceDefaults()
+    {
+        ArchAssert.Passes(
+            Types.InAssembly(Assemblies.DbTool).ShouldNot().HaveDependencyOnAny(
+                Ns.Api, Ns.Application, Ns.Contracts, Ns.Web, Ns.AspNetCore),
+            "The seed tool is a separate deploy step: it writes through the domain and AppDbContext, not through the API or use cases.");
+    }
+
+    [Fact]
     public void ServiceDefaults_DependsOnNothingOfOurs()
     {
         ArchAssert.Passes(
@@ -72,10 +81,16 @@ public sealed class LayerTests
     [Theory]
     [InlineData(nameof(Assemblies.Api))]
     [InlineData(nameof(Assemblies.Web))]
+    [InlineData(nameof(Assemblies.DbTool))]
     public void Services_UseServiceDefaults(string service)
     {
         // One place for logging/telemetry setup: a service that configures it itself would drift from the others.
-        var assembly = service == nameof(Assemblies.Api) ? Assemblies.Api : Assemblies.Web;
+        var assembly = service switch
+        {
+            nameof(Assemblies.Api) => Assemblies.Api,
+            nameof(Assemblies.Web) => Assemblies.Web,
+            _ => Assemblies.DbTool,
+        };
 
         Assert.Contains(
             assembly.GetReferencedAssemblies(),

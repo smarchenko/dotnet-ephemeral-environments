@@ -65,18 +65,30 @@ Migrations: EF migration bundle (decided in the parent spec), not a `migrate` co
 - Command dispatch: first arg = command. `seed` now; unknown/missing command → usage text, exit code 2.
   Shape allows `backfill <name>` in stage 4c.
 - `seed`:
-  - **Seed sets** (decided by the user 2026-11-16: seed runs **once per database**): files
-    `Seed/products-v1.json`, … (copied to output); set name = file name without extension; array of
-    `{ id, name, price, createdAt }`, ~5 products, fixed UUIDs and fixed `createdAt`. New demo data later =
-    a **new set file** (like a new migration); applied sets are never edited.
+  - **Seed sets** (decided by the user 2026-11-16: seed runs **once per database**; **C# classes instead of JSON**,
+    decided by the user 2026-11-16 after the question "what happens when customers etc. are added?"):
+    `internal interface ISeedSet { string Name { get; } IEnumerable<object> Build(); }`, one class per set in
+    `src/EphemeralEnvs.DbTool/Seeding/Sets/` (first: `Seed0001Products`, name `0001-products`, 5 products,
+    fixed UUIDs as public constants, fixed `createdAt`). `Build()` creates entities **through the domain**
+    (`Product.CreateSeeded`, later `Customer.CreateSeeded`, …); relations use the other set's id constants.
+    Sets are discovered by reflection (no registration) and run in ordinal name order (`NNNN-description`);
+    blank/duplicate/too long names fail. New demo data later = a **new set class** (like a new migration);
+    applied sets are never edited.
+  - The runner knows **no entity type**: each object must be an entity of `AppDbContext` (else fail before
+    writing); its key comes from the EF model; "exists" = `FindAsync(type, key)`; EF orders inserts by foreign
+    keys. Adding a new entity type needs no runner change.
+    Why not JSON (approaches considered): (A) one list per entity in the set record — runner and DTOs grow with
+    every entity; (B) JSON sections + one seeder per entity — no runner change, but DTO + mapping per entity,
+    relations as GUID strings, errors only at run time; (C, chosen) C# sets — no DTOs, domain API changes break
+    the build instead of a branch deploy, typed relations; cost: demo data is edited by developers only.
   - **Journal table** `__db_tool_history` (`name` PK, `kind` = `seed` now / `backfill` in stage 4c,
     `applied_at`), mapped in `EphemeralEnvs.Data` as a persistence-only type (not a domain entity) and created
     by a **new EF migration**. Exact table/column naming follows the existing convention in Data: builder's call.
   - `seed`: applies, in name order, every set **not in the journal**: inserts products whose id is not in the
     DB (existing ids skipped, never updated), then writes the journal row; one transaction per set. Already
     applied sets are skipped entirely → products QA deleted or changed stay deleted/changed.
-    Logs per set: `applied products-v1: inserted N, skipped M` or `skipped products-v1 (already applied)`.
-  - `seed --restore`: ignores the journal; for every set inserts the missing ids (brings deleted demo products
+    Logs per set: `applied 0001-products: inserted N, already present M` or `Skipped 0001-products (already applied)`.
+  - `seed --restore`: ignores the journal; for every set inserts the missing keys (brings deleted demo data
     back), never updates existing rows; adds missing journal rows. Same guard.
   - How QA gets data back: `seed --restore` (only deleted ones), `db-reset` (whole DB back to the
     just-deployed state); on previews stage 6b adds a manual redeploy input (e.g. `reset-db: true`).
@@ -119,7 +131,7 @@ Migrations: EF migration bundle (decided in the parent spec), not a `migrate` co
   stage 2 adds the shared env scripts in `deploy/` (`deploy`/`destroy -Env x`), and the server side
   (6b) calls the same image from `deploy/deploy.sh` on Linux. The contract that must stay stable is the
   image's commands + env vars (`ConnectionStrings__Default`, `App__EnvironmentName`).
-- Seed **data** is not in `deploy/local/`: it lives in `src/EphemeralEnvs.DbTool/Seed/` and is baked into the
+- Seed **data** is not in `deploy/local/`: it lives in `src/EphemeralEnvs.DbTool/Seeding/Sets/` (compiled) and is baked into the
   `migrator` image, so every env (local, each branch) gets the same data from the same image.
 - QA reset path (no scripts for QA): stage 1 local = `db-reset.ps1` / `db-update.ps1 -Restore`; stage 2 local
   branch envs = options of the shared env script (e.g. `deploy -Env x -ResetDb` / `-RestoreSeed`); stage 6b =
@@ -146,7 +158,7 @@ Migrations: EF migration bundle (decided in the parent spec), not a `migrate` co
 ## 5. Definition of done (manual checks)
 1. `./deploy/local/down.ps1 -RemoveData; ./deploy/local/up.ps1` → migrate and seed exit 0, api/web up, `/` shows the seed products.
 2. `GET /products/{fixed id}` → 200.
-3. Re-run `up.ps1` → no new migrations, seed `skipped products-v1 (already applied)`.
+3. Re-run `up.ps1` → no new migrations, seed `Skipped 0001-products (already applied)`.
 4. Edit one seeded product and delete another via SQL → `db-update.ps1` → both changes kept;
    `db-update.ps1 -Restore` → deleted one back, edited one still edited.
 5. `db-reset.ps1` → DB back to the seed state.
@@ -154,5 +166,5 @@ Migrations: EF migration bundle (decided in the parent spec), not a `migrate` co
 7. Host without `dotnet ef` on PATH is not needed for `up.ps1`.
 
 ## 6. Left to the builder
-Factory name; bundle self-contained vs not; exact JSON shape; product names/prices; `--wait` handling;
+Factory name; bundle self-contained vs not; product names/prices; `--wait` handling;
 whether DbTool test fixture shares code with `PostgresFixture` (copy is acceptable).
