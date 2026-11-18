@@ -1,6 +1,6 @@
 # Stage 2 — Several environments locally (Traefik, DB per env, deploy/destroy)
 
-Status: **DRAFT 2026-11-18**, awaiting user approval. Parent spec: `2026-11-11-branch-deployment-design.md`
+Status: **APPROVED by user 2026-11-18**. Parent spec: `2026-11-11-branch-deployment-design.md`
 (stage 2 row in §3, target architecture in §4).
 
 ## 1. Intent
