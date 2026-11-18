@@ -30,15 +30,18 @@ public static partial class DbToolCli
         Config: ConnectionStrings__Default, App__EnvironmentName (required, not production/prod)
         """;
 
-    // PostgreSQL "undefined_table": the schema has not been migrated.
+    // PostgreSQL "undefined_table" / "undefined_column": the schema is not migrated or is behind the seed code.
     private const string UndefinedTable = "42P01";
+    private const string UndefinedColumn = "42703";
 
     /// <param name="args">Command-line arguments (commands only; config comes from env vars).</param>
     /// <param name="configOverrides">Extra config on top of env vars (tests).</param>
+    /// <param name="configureHost">Extra host setup after the defaults, e.g. a log collector (tests).</param>
     /// <param name="ct">Cancellation.</param>
     public static async Task<int> RunAsync(
         string[] args,
         IReadOnlyDictionary<string, string?>? configOverrides = null,
+        Action<IHostApplicationBuilder>? configureHost = null,
         CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(args);
@@ -64,6 +67,7 @@ public static partial class DbToolCli
             options.UseNpgsql(sp.GetRequiredService<IConfiguration>().GetConnectionString("Default")));
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddScoped<SeedRunner>();
+        configureHost?.Invoke(builder);
 
         using var host = builder.Build();
         var config = host.Services.GetRequiredService<IConfiguration>();
@@ -95,7 +99,7 @@ public static partial class DbToolCli
             LogDone(logger, environmentName!);
             return Success;
         }
-        catch (PostgresException ex) when (ex.SqlState == UndefinedTable)
+        catch (PostgresException ex) when (ex.SqlState is UndefinedTable or UndefinedColumn)
         {
             LogSchemaMissing(logger, ex);
             return Failure;
@@ -131,7 +135,7 @@ public static partial class DbToolCli
     [LoggerMessage(Level = LogLevel.Error, Message = "ConnectionStrings__Default is not set")]
     private static partial void LogNoConnectionString(ILogger logger);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Seed failed: the schema is missing. Run the migrations (efbundle) before seeding")]
+    [LoggerMessage(Level = LogLevel.Error, Message = "Seed failed: the schema is missing or out of date. Run the migrations (efbundle) before seeding")]
     private static partial void LogSchemaMissing(ILogger logger, Exception exception);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Seed failed")]

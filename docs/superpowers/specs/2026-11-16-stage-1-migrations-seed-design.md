@@ -90,6 +90,9 @@ Migrations: EF migration bundle (decided in the parent spec), not a `migrate` co
     Logs per set: `applied 0001-products: inserted N, already present M` or `Skipped 0001-products (already applied)`.
   - `seed --restore`: ignores the journal; for every set inserts the missing keys (brings deleted demo data
     back), never updates existing rows; adds missing journal rows. Same guard.
+  - Overlapping runs on one database (two deploys of one environment) are serialized by a Postgres advisory
+    lock taken at the start of each set's transaction (added after the final review): the later run sees the
+    journal row and skips, instead of failing on a duplicate key.
   - How QA gets data back: `seed --restore` (only deleted ones), `db-reset` (whole DB back to the
     just-deployed state); on previews stage 6b adds a manual redeploy input (e.g. `reset-db: true`).
   - Guard (Claude's call after builder check): refuses (exit 1, nothing written) when `App__EnvironmentName`
@@ -102,16 +105,19 @@ Migrations: EF migration bundle (decided in the parent spec), not a `migrate` co
 ### 4.3 `migrator` image — `src/EphemeralEnvs.DbTool/Dockerfile` (build context = repo root)
 - Build stage (`sdk:10.0`): `dotnet tool restore`, `dotnet ef migrations bundle` for
   `src/EphemeralEnvs.Data` (Linux, output `efbundle`), and `dotnet publish` of DbTool.
-- Final stage: `mcr.microsoft.com/dotnet/runtime:10.0` (DbTool needs the runtime), non-root `USER $APP_UID`,
-  contains `/app/efbundle` and DbTool. Bundle self-contained or framework-dependent: builder's call.
+- Final stage: `mcr.microsoft.com/dotnet/aspnet:10.0` (changed from `runtime` during Task 4: ServiceDefaults references
+  the ASP.NET Core framework; shares base layers with api/web), non-root `USER $APP_UID`, contains `/app/efbundle`
+  (framework-dependent, built for the build stage's platform) and DbTool.
 - No entrypoint magic: compose/CI pass the command. Two uses of one image:
   - migrate: `./efbundle --connection "<conn>"`
   - seed: `dotnet EphemeralEnvs.DbTool.dll seed`
-- `.dockerignore` / restore-layer pattern as in the Api Dockerfile.
+- `.dockerignore` / restore-layer pattern as in the Api Dockerfile. Only the DbTool, Data, Domain and ServiceDefaults
+  sources are copied, so a change in Api/Web does not rebuild the image.
 
 ### 4.4 Compose (`deploy/local/docker-compose.yml`)
-- Services `migrate` and `seed`, both `image: ephemeral-envs/migrator` built once from the DbTool Dockerfile
-  (builder ensures it is built once, not twice).
+- Services `migrate` and `seed` share one build definition (YAML anchor `x-migrator`, `image: ephemeral-envs-local/migrator`,
+  local prefix like the compose project). Compose may run the build for both services; the second one is served
+  entirely from the layer cache, so this is accepted (changed after the final review).
 - `migrate` depends on `postgres: service_healthy`; `seed` depends on `migrate: service_completed_successfully`;
   `api` depends on `seed: service_completed_successfully` (+ postgres healthy). `restart: "no"` for both.
 - Both get the connection string to `postgres` through env vars (the bundle via `--connection`).

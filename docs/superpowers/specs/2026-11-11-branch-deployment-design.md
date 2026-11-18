@@ -48,13 +48,14 @@ experiment before the next stage starts. Never deliver several new technologies 
 | # | Stage | New things |
 |---|---|---|
 | 0 | App skeleton | MVC Web, API + Swagger, Domain/Data/Contracts, EF Core + Postgres, JS widget, CORS, runtime config, health probes; one env via docker compose |
-| 1 | Migrations as a separate step + seed | EF migration bundle, `migrator` image, seed step. **Local dev uses the same path**: compose service `migrator` runs before `api` (`depends_on: condition: service_completed_successfully`), so `docker compose up` = DB → migrate → seed → apps. When running from the IDE: `scripts/db-update.ps1` (`docker compose run --rm migrator`) and `scripts/db-reset.ps1` (drop → migrate → seed). No `EnsureCreated`, no migrate-on-startup even in Dev |
+| 1 | Migrations as a separate step + seed | **Done**, details in [`2026-11-16-stage-1-migrations-seed-design.md`](2026-11-16-stage-1-migrations-seed-design.md). EF migration bundle + DbTool `seed [--restore]` in one `migrator` image. **Local dev uses the same path**: compose one-off services `migrate` → `seed` run before `api` (`depends_on: condition: service_completed_successfully`), so `docker compose up` = DB → migrate → seed → apps. Scripts in `deploy/local/`: `db-update.ps1 [-Restore]` (migrate + new seed sets; `-Restore` re-inserts deleted demo rows) and `db-reset.ps1` (drop → migrate → seed). Seed sets are C# classes built through the domain, applied **once per database** (journal `__db_tool_history`), never update rows. No `EnsureCreated`, no migrate-on-startup even in Dev |
 | 2 | Multi-env locally | Traefik, `<env>.localhost:8080` / `<env>-api.localhost:8080`, shared Postgres with DB-per-env, `deploy`/`destroy -Env x` scripts; try `--scale api=2 web=2` (→ Data Protection keys) |
 | FF1 | Feature flags (config) | **Microsoft.FeatureManagement**, flags from config/env vars (`FeatureManagement__NewWidget=true`). Demo flag: API endpoint/field behind `[FeatureGate]`, new widget version in Web, `/features` endpoint for the JS widget; tests for flag on and off; `deploy -Env x -Flags NewWidget=true` → different flags per local env. Later in 6b: preview flags from PR labels (`flag:NewWidget`). Shows trunk-based dev: merge disabled, enable on the preview |
 | O1 | Observability | `EphemeralEnvs.ServiceDefaults` + OpenTelemetry (ASP.NET Core, HttpClient, Npgsql), Aspire Dashboard, `traceparent` sent from the widget, `deployment.environment` tag; **HTTP resilience** in ServiceDefaults (`Microsoft.Extensions.Http.Resilience`, `AddStandardResilienceHandler` via `ConfigureHttpClientDefaults`: attempt + total timeout, retries with backoff only for safe methods, circuit breaker, all from config; replaces the plain `Api__TimeoutSeconds`), retries visible in traces |
 | 3 | Bruno | Collection with a per-env `baseUrl` |
 | 4a | Migration safety | Expand/contract tool, `[ContractMigration]`, Squawk warnings; demo rename via expand → switch → contract PRs |
 | 4b | API contract safety | **oasdiff**: compare the PR's OpenAPI document with `main`'s; breaking changes (removed endpoint/field, new required param…) fail unless explicitly allowed. The API counterpart of migration-safety |
+| 4c | Backfill job | Post-deploy data migration for expand/contract (fill a new column before the contract PR): DbTool command `backfill <name>` in the `migrator` image, idempotent batches, recorded in the journal `__db_tool_history` with `kind` = `backfill`; runs after the apps roll out |
 | 5a | GitHub Actions CI | PR checks (no deploy): build (warnings as errors), tests + **coverage report** (coverlet + ReportGenerator in the job summary, no hard threshold yet), `dotnet format --verify-no-changes`, `migration-safety`, `oasdiff`; PR template, CODEOWNERS, rulesets/branch protection on `main` |
 | 5b | Security & supply chain | **gitleaks** (secrets), **CodeQL** (SAST for C#, JS and workflows; free on public repos), **Dependabot** (nuget, docker, github-actions; grouped weekly), **Trivy** (scan built images: fail on fixable HIGH/CRITICAL), **hadolint** (Dockerfiles), **actionlint + zizmor** (workflow correctness and security), all third-party actions **pinned by commit SHA** |
 | Q | Review comments → rules | 2–3 recurring review comments from the user's real project → `.editorconfig` severity / existing analyzers (Roslynator, Meziantou, BannedApiAnalyzers) / custom Roslyn analyzer with tests; demo PR fails in CI |
@@ -203,9 +204,9 @@ No Serilog or OpenTelemetry in stage 0.
   Host ports can be changed through compose variables (`EE_WEB_PORT`, `EE_API_PORT`,
   `EE_DB_PORT`, default 5432 → change it if it is taken).
 - Every Docker command uses the Linux engine: `$env:DOCKER_CONTEXT='desktop-linux'`.
-- Migrations in stage 0 are applied **by hand** from the host (`dotnet ef database update` against
-  the exposed Postgres port). The app never migrates on startup. Stage 1 replaces this with the
-  `migrator` step.
+- Migrations in stage 0 were applied **by hand** from the host (`dotnet ef database update` against
+  the exposed Postgres port). The app never migrates on startup. Since stage 1 they run in the
+  `migrator` image (compose services `migrate` → `seed` before `api`).
 
 ### 5.7 Code quality baseline
 

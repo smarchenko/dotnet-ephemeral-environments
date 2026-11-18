@@ -64,11 +64,31 @@ public sealed class DbToolCliTests(PostgresDatabaseFixture postgres)
     }
 
     [Fact]
-    public async Task Cli_SchemaMissing_Returns1()
+    public async Task Cli_SchemaMissing_Returns1_AndSaysRunMigrations()
     {
         var cs = await postgres.CreateDatabaseAsync(migrate: false);
+        var logs = new CollectingLoggerProvider();
 
-        Assert.Equal(DbToolCli.Failure, await DbToolCli.RunAsync(["seed"], Config(cs)));
+        Assert.Equal(DbToolCli.Failure, await DbToolCli.RunAsync(["seed"], Config(cs), logs.AddTo));
+
+        Assert.Contains(logs.Errors, m => m.Contains("Run the migrations", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Cli_SchemaBehind_Returns1_AndSaysRunMigrations()
+    {
+        // The database misses the latest migration: the table exists, a column does not (42703).
+        var cs = await postgres.CreateDatabaseAsync();
+        await using (var db = PostgresDatabaseFixture.CreateContext(cs))
+        {
+            await db.Database.ExecuteSqlRawAsync("ALTER TABLE products DROP COLUMN price");
+        }
+
+        var logs = new CollectingLoggerProvider();
+
+        Assert.Equal(DbToolCli.Failure, await DbToolCli.RunAsync(["seed"], Config(cs), logs.AddTo));
+
+        Assert.Contains(logs.Errors, m => m.Contains("Run the migrations", StringComparison.Ordinal));
     }
 
     private static Dictionary<string, string?> Config(string? connectionString, string environmentName = "test") => new()

@@ -35,6 +35,20 @@ public sealed class SeedRunnerTests(PostgresDatabaseFixture postgres)
     }
 
     [Fact]
+    public async Task Seed_ConcurrentRuns_OneAppliesOthersSkip()
+    {
+        // Two deploys of one environment may overlap (e.g. db-update while up is seeding): none may fail.
+        var cs = await postgres.CreateDatabaseAsync();
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 8).Select(_ => Task.Run(() => RunAsync(cs, [V1], SeedMode.Normal))));
+
+        var all = results.SelectMany(r => r).ToList();
+        Assert.Single(all, r => r == new SeedSetResult("0001-products", false, 2, 0));
+        Assert.Equal(7, all.Count(r => r.SkippedAsApplied));
+        Assert.Equal(2, await CountProductsAsync(cs));
+    }
+
+    [Fact]
     public async Task Seed_SecondRun_SkipsAppliedSet()
     {
         var cs = await postgres.CreateDatabaseAsync();

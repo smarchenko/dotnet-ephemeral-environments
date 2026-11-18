@@ -14,6 +14,9 @@ namespace EphemeralEnvs.DbTool.Seeding;
 /// </summary>
 internal sealed partial class SeedRunner(AppDbContext db, TimeProvider time, ILogger<SeedRunner> logger)
 {
+    // Key of the Postgres advisory lock that serializes seed runs on one database (any constant unique to DbTool).
+    private const long SeedLockKey = 0x45_45_53_45_45_44; // "EESEED"
+
     public async Task<IReadOnlyList<SeedSetResult>> RunAsync(IReadOnlyList<ISeedSet> sets, SeedMode mode, CancellationToken ct)
     {
         if (sets.Count == 0)
@@ -36,14 +39,18 @@ internal sealed partial class SeedRunner(AppDbContext db, TimeProvider time, ILo
         // Build and validate the whole set before touching the database.
         var entities = Resolve(set);
 
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+
+        // Overlapping runs on one database (two deploys of one environment) wait here, so the second one sees the
+        // journal row and the rows of the first instead of failing on a duplicate key. Released on commit/rollback.
+        await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock({SeedLockKey})", ct);
+
         var applied = await db.DbToolHistory.AnyAsync(e => e.Name == set.Name, ct);
         if (applied && mode == SeedMode.Normal)
         {
             LogSkipped(logger, set.Name);
             return new SeedSetResult(set.Name, SkippedAsApplied: true, Inserted: 0, AlreadyPresent: 0);
         }
-
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var inserted = 0;
         foreach (var (entity, entityType, key) in entities)

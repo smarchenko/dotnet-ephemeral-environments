@@ -18,7 +18,11 @@ COPY src/EphemeralEnvs.Domain/EphemeralEnvs.Domain.csproj                   src/
 COPY src/EphemeralEnvs.ServiceDefaults/EphemeralEnvs.ServiceDefaults.csproj src/EphemeralEnvs.ServiceDefaults/
 RUN dotnet tool restore && dotnet restore src/EphemeralEnvs.DbTool/EphemeralEnvs.DbTool.csproj
 
-COPY src/ src/
+# Only the projects DbTool builds from: a change in Api/Web/Application/Contracts does not rebuild this image.
+COPY src/EphemeralEnvs.DbTool/         src/EphemeralEnvs.DbTool/
+COPY src/EphemeralEnvs.Data/           src/EphemeralEnvs.Data/
+COPY src/EphemeralEnvs.Domain/         src/EphemeralEnvs.Domain/
+COPY src/EphemeralEnvs.ServiceDefaults/ src/EphemeralEnvs.ServiceDefaults/
 RUN dotnet publish src/EphemeralEnvs.DbTool/EphemeralEnvs.DbTool.csproj -c Release --no-restore -o /app
 
 # Migration bundle: a single executable with all migrations of AppDbContext. Framework-dependent (the final image

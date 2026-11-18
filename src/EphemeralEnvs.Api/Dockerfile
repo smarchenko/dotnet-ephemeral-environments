@@ -13,7 +13,13 @@ COPY src/EphemeralEnvs.Domain/EphemeralEnvs.Domain.csproj                   src/
 COPY src/EphemeralEnvs.ServiceDefaults/EphemeralEnvs.ServiceDefaults.csproj src/EphemeralEnvs.ServiceDefaults/
 RUN dotnet restore src/EphemeralEnvs.Api/EphemeralEnvs.Api.csproj
 
-COPY src/ src/
+# Only the projects this app builds from: a change in another project does not rebuild this image.
+COPY src/EphemeralEnvs.Api/             src/EphemeralEnvs.Api/
+COPY src/EphemeralEnvs.Application/     src/EphemeralEnvs.Application/
+COPY src/EphemeralEnvs.Contracts/       src/EphemeralEnvs.Contracts/
+COPY src/EphemeralEnvs.Data/            src/EphemeralEnvs.Data/
+COPY src/EphemeralEnvs.Domain/          src/EphemeralEnvs.Domain/
+COPY src/EphemeralEnvs.ServiceDefaults/ src/EphemeralEnvs.ServiceDefaults/
 RUN dotnet publish src/EphemeralEnvs.Api/EphemeralEnvs.Api.csproj -c Release --no-restore -o /app
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
