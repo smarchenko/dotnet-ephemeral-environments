@@ -1,9 +1,21 @@
-# Stage 0: one environment (Web + API + PostgreSQL) on this machine.
+# One environment (Web + API + PostgreSQL) on this machine. Use ./deploy/local/up.ps1 (README).
 #   $env:DOCKER_CONTEXT='desktop-linux'
 #   docker compose -f deploy/local/docker-compose.yml up --build -d
 # Host ports: EE_WEB_PORT (5080), EE_API_PORT (5081), EE_DB_PORT (5432).
-# The schema is applied by hand (README "Stage 0: how to run"); the apps never migrate on startup.
+# Start order (stage 1): postgres (healthy) → migrate → seed → api → web. migrate and seed are one-off steps from the
+# `migrator` image; the apps never migrate or seed on startup and do not start if a step fails.
 name: ephemeral-envs-local
+
+# GSS Encryption Mode=Disable: no Kerberos here; otherwise Npgsql probes libgssapi_krb5.so.2 (absent in the .NET
+# Ubuntu images) and logs "Cannot load library" on every new connection pool.
+x-db-connection: &db-connection Host=postgres;Database=ephemeral_envs;Username=ephemeral_envs;Password=ephemeral_envs;GSS Encryption Mode=Disable
+
+x-migrator: &migrator
+  build:
+    context: ../..
+    dockerfile: src/EphemeralEnvs.DbTool/Dockerfile
+  image: ephemeral-envs-local/migrator
+  restart: "no"
 
 services:
   postgres:
@@ -22,6 +34,25 @@ services:
       timeout: 3s
       retries: 10
 
+  # EF Core migration bundle; prints "No migrations were applied" when the schema is current.
+  migrate:
+    <<: *migrator
+    command: ["./efbundle", "--connection", *db-connection]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Demo data, once per database (journal __db_tool_history). db-update.ps1 -Restore brings deleted demo rows back.
+  seed:
+    <<: *migrator
+    command: ["dotnet", "EphemeralEnvs.DbTool.dll", "seed"]
+    environment:
+      ConnectionStrings__Default: *db-connection
+      App__EnvironmentName: local
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   api:
     build:
       context: ../..
@@ -29,7 +60,7 @@ services:
     ports:
       - "${EE_API_PORT:-5081}:8080"
     environment:
-      ConnectionStrings__Default: Host=postgres;Database=ephemeral_envs;Username=ephemeral_envs;Password=ephemeral_envs
+      ConnectionStrings__Default: *db-connection
       # The browser's origin is the Web as seen from the host.
       Cors__AllowedOrigins: http://localhost:${EE_WEB_PORT:-5080}
       Swagger__Enabled: "true"
@@ -37,6 +68,8 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      seed:
+        condition: service_completed_successfully
 
   web:
     build:

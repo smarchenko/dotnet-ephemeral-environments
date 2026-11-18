@@ -1,32 +1,24 @@
 <#
 .SYNOPSIS
-    Stops the stage 0 local environment.
+    Stops the local environment.
 .DESCRIPTION
     Removes the containers and the network. The database volume is kept unless -RemoveData is given.
 .EXAMPLE
     ./deploy/local/down.ps1
 .EXAMPLE
-    ./deploy/local/down.ps1 -RemoveData     # also drop the database (next up.ps1 starts from an empty schema)
+    ./deploy/local/down.ps1 -RemoveData     # also drop the database (next up.ps1 migrates and seeds from scratch)
 #>
 [CmdletBinding()]
 param(
     [switch] $RemoveData
 )
 
-$ErrorActionPreference = 'Stop'
-$composeFile = Join-Path $PSScriptRoot 'docker-compose.yml'
+. "$PSScriptRoot/common.ps1"
 
-$savedContext = $env:DOCKER_CONTEXT
-$env:DOCKER_CONTEXT = 'desktop-linux'
-try {
-    $composeArgs = @('compose', '-f', $composeFile, 'down')
-    if ($RemoveData) { $composeArgs += '--volumes' }
-
-    docker @composeArgs
-    if ($LASTEXITCODE -ne 0) { throw "docker compose down failed (exit code $LASTEXITCODE)." }
+Use-LocalDockerEnv -WebPort (Get-DefaultPort 'EE_WEB_PORT' 5080) -ApiPort (Get-DefaultPort 'EE_API_PORT' 5081) -DbPort (Get-DefaultPort 'EE_DB_PORT' 5432) -Script {
+    $downArgs = @('down')
+    if ($RemoveData) { $downArgs += '--volumes' }
+    Invoke-Step 'Stop containers' { Invoke-Compose @downArgs }
 
     Write-Host ($(if ($RemoveData) { 'Environment removed, database volume dropped.' } else { 'Environment stopped, database volume kept.' })) -ForegroundColor Green
-}
-finally {
-    $env:DOCKER_CONTEXT = $savedContext
 }
