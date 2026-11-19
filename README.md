@@ -39,6 +39,7 @@ Only Docker is needed to run it (the .NET SDK is for writing code):
 |---|---|
 | <http://localhost:5080> | Web: product list (5 demo products) |
 | <http://localhost:5080/Home/Widget> | JS widget calling the API from the browser |
+| <http://localhost:5080/Home/Create> | Server-side form (antiforgery token) adding a product through the Web |
 | <http://localhost:5081/swagger> | API (Swagger UI) |
 | <http://localhost:5081/health/ready> | readiness probe (checks the database) |
 

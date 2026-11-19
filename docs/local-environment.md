@@ -89,6 +89,8 @@ Preview environments get the same steps per environment (stages 2 and 6b).
 3. <http://localhost:5080>: the 5 demo products, rendered server-side; the footer shows `Environment: local`.
    `curl http://localhost:5081/products/0196a000-0000-7000-8000-000000000001` → 200.
 4. <http://localhost:5080/Home/Widget>: add a product; DevTools → Network shows the cross-origin calls to `:5081`.
+   <http://localhost:5080/Home/Create> ("Add (form)"): the same through a server-side form (the Web calls the API);
+   a blank name shows "The Name field is required.", a valid one returns to the list with the new product.
 5. Seed never overwrites: change one demo product and delete another (any SQL client on `localhost:<DbPort>`,
    `ephemeral_envs` / `ephemeral_envs`, or
    `docker compose -f deploy/local/docker-compose.yml exec postgres psql -U ephemeral_envs`), then

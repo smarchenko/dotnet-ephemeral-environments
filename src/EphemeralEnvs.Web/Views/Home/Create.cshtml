@@ -1,0 +1,35 @@
+@using EphemeralEnvs.Contracts
+@model CreateProductRequest
+@{
+    ViewData["Title"] = "Add a product (form)";
+}
+
+<h1>Add a product</h1>
+<p class="text-muted">
+    A classic server-side form: the browser posts to the Web, the Web calls the API through
+    <code>Api__InternalBaseUrl</code>. The form carries an antiforgery token, so it only works across several Web
+    replicas when they share the Data Protection keys.
+</p>
+
+@if (ViewData["Error"] is string error)
+{
+    <div class="alert alert-warning" role="alert">@error</div>
+}
+
+<form asp-action="Create" method="post" class="row g-2" style="max-width: 32rem">
+    <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+    <div class="col-12">
+        <label asp-for="Name" class="form-label"></label>
+        <input asp-for="Name" class="form-control" />
+        <span asp-validation-for="Name" class="text-danger"></span>
+    </div>
+    <div class="col-12">
+        <label asp-for="Price" class="form-label"></label>
+        <input asp-for="Price" class="form-control" type="number" step="0.01" min="0.01" />
+        <span asp-validation-for="Price" class="text-danger"></span>
+    </div>
+    <div class="col-12">
+        <button type="submit" class="btn btn-primary">Add</button>
+        <a asp-action="Index" class="btn btn-link">Back to the list</a>
+    </div>
+</form>

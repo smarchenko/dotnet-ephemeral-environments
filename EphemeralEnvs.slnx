@@ -14,5 +14,6 @@
     <Project Path="tests/EphemeralEnvs.ArchitectureTests/EphemeralEnvs.ArchitectureTests.csproj" />
     <Project Path="tests/EphemeralEnvs.DbTool.Tests/EphemeralEnvs.DbTool.Tests.csproj" />
     <Project Path="tests/EphemeralEnvs.Domain.Tests/EphemeralEnvs.Domain.Tests.csproj" />
+    <Project Path="tests/EphemeralEnvs.Web.Tests/EphemeralEnvs.Web.Tests.csproj" />
   </Folder>
 </Solution>

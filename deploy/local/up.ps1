@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Starts the local environment: PostgreSQL → migrations → demo data → API → Web.
+    Starts the local environment: PostgreSQL -> migrations -> demo data -> API -> Web.
 .DESCRIPTION
     One `docker compose up --build --wait`: postgres becomes healthy, the one-off steps `migrate` (EF migration bundle)
     and `seed` (DbTool) run from the `migrator` image and must exit 0, then api and web start and become healthy.
@@ -26,7 +26,7 @@ if (-not $DbPort) { $DbPort = Get-DefaultPort 'EE_DB_PORT' 5432 }
 Use-LocalDockerEnv -WebPort $WebPort -ApiPort $ApiPort -DbPort $DbPort -Script {
     # --wait accepts one-off services that exited 0 (checked on compose v2.30); a failed step fails `up`.
     try {
-        Invoke-Step 'Build and start (postgres → migrate → seed → api → web; first build takes a few minutes)' {
+        Invoke-Step 'Build and start (postgres -> migrate -> seed -> api -> web; first build takes a few minutes)' {
             Invoke-Compose up --build --detach --wait
         }
     }

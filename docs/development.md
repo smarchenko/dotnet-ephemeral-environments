@@ -245,7 +245,7 @@ checks that every service does).
 
 ## Tests
 
-Four test projects; `dotnet test` runs all of them:
+Five test projects; `dotnet test` runs all of them:
 
 - `EphemeralEnvs.Domain.Tests` and `EphemeralEnvs.ArchitectureTests`: fast, no Docker. The architecture tests also fail
 when the EF model was changed without a migration.
@@ -254,6 +254,9 @@ against a real, throwaway PostgreSQL 17 container started by [Testcontainers](ht
 (one container per test class, migrations applied by the fixture, removed after the run).
 - `tests/EphemeralEnvs.DbTool.Tests`: seed runner, seed set catalog and the CLI (exit codes, guard, `--restore`).
 One PostgreSQL container for the whole project (xUnit collection fixture), a fresh migrated database per test.
+- `tests/EphemeralEnvs.Web.Tests`: the Web in memory (`WebApplicationFactory`), the API replaced by a stub
+`HttpMessageHandler` (`WebFactory`); no Docker. The server-side form `/Home/Create`: antiforgery token required,
+API call, field errors from the API's ValidationProblemDetails, API unavailable.
 
 The Docker-based tests need Docker running.
 

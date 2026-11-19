@@ -20,6 +20,7 @@
 - Labels on every env service: `ee.env`, `ee.branch`, `ee.commit` (sha or `working-tree`), `ee.deployed-at` (UTC ISO 8601).
 - No secrets written to files; DB password = 32 hex chars from a CSPRNG per deploy, passed via process env to compose. Local platform admin password defaults to `postgres` (`EE_PG_ADMIN_PASSWORD`).
 - Connection strings keep `GSS Encryption Mode=Disable`.
+- `.ps1`/`.psm1` files are **ASCII only** (no `→`, `—`, curly quotes): Windows PowerShell 5.1 reads BOM-less UTF-8 as Windows-1252, where `→` (E2 86 92) ends in `’`, which it parses as a quote. New scripts start with `#Requires -Version 7.2`, so 5.1 stops with a clear message; ASCII keeps the file parseable until that check runs.
 - Build 0 warnings, `dotnet format --verify-no-changes` clean, all tests green.
 - Docs: README short (quick start + links); new `docs/environments.md`; CLAUDE.md docs list; `docs/STATUS.md` after every step.
 

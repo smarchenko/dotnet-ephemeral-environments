@@ -32,6 +32,48 @@ public sealed partial class HomeController(ProductsApiClient api, ILogger<HomeCo
     /// <summary>The same list plus a form, rendered by wwwroot/js/widget.js from the browser.</summary>
     public IActionResult Widget() => View();
 
+    /// <summary>
+    /// Server-side form with an antiforgery token (validated globally). Unlike the widget, it depends on the
+    /// Data Protection keys: with several Web replicas they must be shared (DataProtection__KeysPath).
+    /// </summary>
+    [HttpGet]
+    public IActionResult Create() => View(new CreateProductRequest());
+
+    [HttpPost]
+    public async Task<IActionResult> Create(CreateProductRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!ModelState.IsValid)
+        {
+            return View(request);
+        }
+
+        var aborted = HttpContext.RequestAborted;
+        try
+        {
+            var result = await api.CreateProductAsync(request, aborted);
+            if (result.Created)
+            {
+                return RedirectToAction(nameof(Index));
+            }
+
+            foreach (var (field, messages) in result.Errors)
+            {
+                foreach (var message in messages)
+                {
+                    ModelState.AddModelError(field, message);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !aborted.IsCancellationRequested)
+        {
+            LogApiUnavailable(ex);
+            ViewData["Error"] = ApiUnavailableMessage;
+        }
+
+        return View(request);
+    }
+
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {

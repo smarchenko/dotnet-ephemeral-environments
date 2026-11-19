@@ -2,6 +2,7 @@ using EphemeralEnvs.ServiceDefaults;
 using EphemeralEnvs.Web.Options;
 using EphemeralEnvs.Web.Services;
 
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -24,7 +25,8 @@ builder.Services.AddHttpClient<ProductsApiClient>((sp, http) =>
     http.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
 });
 
-builder.Services.AddControllersWithViews();
+// Every unsafe request (POST/PUT/DELETE) of a form must carry the antiforgery token.
+builder.Services.AddControllersWithViews(options => options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
 
 var app = builder.Build();
 
@@ -45,3 +47,6 @@ app.MapControllerRoute(
     .WithStaticAssets();
 
 app.Run();
+
+// Makes the entry point visible to WebApplicationFactory<Program> in the tests.
+public partial class Program;
