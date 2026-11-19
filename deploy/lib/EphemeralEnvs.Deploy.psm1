@@ -167,6 +167,21 @@ function Use-DockerEnv {
     }
 }
 
+function Invoke-PlatformCompose {
+    <# .SYNOPSIS docker compose of the platform (project ee-platform, deploy/platform/compose.yml). #>
+    docker compose -p $script:PlatformProject -f (Join-Path (Get-RepoRoot) 'deploy/platform/compose.yml') @args
+}
+
+function Start-Platform {
+    <#
+    .SYNOPSIS
+        Starts Traefik + shared Postgres if they are not running and waits until healthy.
+        Never recreates a running container (--no-recreate), so env databases and routes stay up.
+    #>
+    param()
+    Invoke-Native 'Start platform (Traefik + Postgres)' { Invoke-PlatformCompose up --detach --wait --no-recreate }
+}
+
 function Get-PlatformPostgresContainer {
     [OutputType([string])]
     param()
@@ -240,4 +255,5 @@ function Get-RunningApiPassword {
 }
 
 Export-ModuleMember -Function Get-EnvName, ConvertTo-DbName, New-DbPassword, Get-RepoRoot, Resolve-Commit,
-Invoke-Native, Use-DockerEnv, Invoke-PlatformSql, Get-EnvContainers, Get-RunningApiPassword
+Invoke-Native, Use-DockerEnv, Invoke-PlatformCompose, Start-Platform, Invoke-PlatformSql, Get-EnvContainers,
+Get-RunningApiPassword
