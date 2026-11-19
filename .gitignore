@@ -487,3 +487,6 @@ $RECYCLE.BIN/
 .terraform/
 .env
 .superpowers/
+
+# Ephemeral environments: git worktrees of deployed branches (deploy/deploy.ps1)
+.ee/

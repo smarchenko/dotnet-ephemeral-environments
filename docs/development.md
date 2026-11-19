@@ -276,6 +276,25 @@ always wins.
 > Testcontainers expects `npipe://./pipe/...` (2 slashes), so one value breaks the other. Use `DOCKER_CONTEXT`
 > for the CLI (see [Prerequisites](../README.md#prerequisites)).
 
+### Script tests (Pester)
+
+The PowerShell module of the multi-env scripts (`deploy/lib/EphemeralEnvs.Deploy.psm1`) has unit tests in
+`tests/deploy/` (env name rules, database name, password). They need **PowerShell 7.2+** and **Pester 5.5+**
+(Windows ships Pester 3.4, which cannot run them). One-time install:
+
+```powershell
+Install-Module Pester -MinimumVersion 5.5 -Scope CurrentUser -Force -SkipPublisherCheck
+```
+
+Run (no Docker needed):
+
+```powershell
+pwsh -NoProfile -c "Invoke-Pester tests/deploy -Output Detailed"
+```
+
+`dotnet test` does not run them. Keep `.ps1`/`.psm1` files **ASCII-only**: Windows PowerShell 5.1 reads BOM-less
+files as cp1252, so a `→` in a string breaks the script.
+
 ## Code quality
 
 The rules live in `Directory.Build.props` and `.editorconfig` and are enforced **at build time**:
