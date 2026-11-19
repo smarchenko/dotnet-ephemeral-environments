@@ -17,7 +17,7 @@
 - Ports: Traefik `${EE_PROXY_PORT:-8080}`, dashboard `${EE_DASHBOARD_PORT:-8090}`, platform Postgres `${EE_PLATFORM_DB_PORT:-5442}` (local only). Stage 1 (`deploy/local/`, 5080/5081/5432) stays unchanged.
 - Names: compose project `ee-<env>`; database and role `ee_<env>` (`-` → `_`); hosts `<env>.${EE_DOMAIN}` / `<env>-api.${EE_DOMAIN}`, `EE_DOMAIN=localhost`; image repos `ee/api`, `ee/web`, `ee/migrator`, tags `<sha12>` or `wt-<env>`.
 - Env name: lowercase, runs of non-`[a-z0-9]` → `-`, trim `-`; max 40 → first 33 (trailing `-` trimmed) + `-` + 6 hex of SHA-1 of the full sanitized name; empty or `platform` → error.
-- Labels on every env service: `ee.env`, `ee.branch`, `ee.commit` (sha or `working-tree`), `ee.deployed-at` (UTC ISO 8601).
+- Labels on every env service: `ee.env`, `ee.branch`, `ee.commit` (sha or `<sha>+dirty`), `ee.source` (`local` | `worktree`), `ee.deployed-at` (UTC ISO 8601).
 - No secrets written to files; DB password = 32 hex chars from a CSPRNG per deploy, passed via process env to compose. Local platform admin password defaults to `postgres` (`EE_PG_ADMIN_PASSWORD`).
 - Connection strings keep `GSS Encryption Mode=Disable`.
 - `.ps1`/`.psm1` files are **ASCII only** (no `→`, `—`, curly quotes): Windows PowerShell 5.1 reads BOM-less UTF-8 as Windows-1252, where `→` (E2 86 92) ends in `’`, which it parses as a quote. New scripts start with `#Requires -Version 7.2`, so 5.1 stops with a clear message; ASCII keeps the file parseable until that check runs.
@@ -174,16 +174,16 @@ Also: a 34th char that is `-` → head is trimmed (`('a'*32)+'-b'*10` → head w
 **Interfaces:**
 - Consumes: everything from Tasks 3–4; config `DataProtection__KeysPath` + `/keys` (Task 2).
 - Produces:
-  - `deploy.ps1 (-Branch <b> | -FromWorkingTree) [-Env <e>] [-Force] [-Rebuild] [-ApiReplicas <int>=1] [-WebReplicas <int>=1] [-NoSharedKeys]` (parameter sets `Branch` / `WorkingTree`).
+  - `deploy.ps1 [-Committed | -Branch <b>] [-Env <e>] [-Force] [-Rebuild] [-ApiReplicas <int>=1] [-WebReplicas <int>=1] [-NoSharedKeys]` (parameter sets `Current` (default, with `-Committed`) / `Branch`; revised 2026-11-19, spec §4.4).
   - `Get-EnvComposeArgs -EnvName <e> -ComposeFile <path>` → `@('-p', "ee-$e", '-f', $path)`; worktree path `Get-WorktreePath -EnvName <e>` → `<repo>/.ee/worktrees/<e>`. Tasks 6 reuse both.
   - `Set-EnvComposeVariables -EnvName -Tag -Password -Branch -Commit -KeysPath` → sets process env `EE_ENV, EE_TAG, EE_DOMAIN, EE_PROXY_PORT, EE_DB_PASSWORD, EE_BRANCH, EE_COMMIT, EE_DEPLOYED_AT, EE_DP_KEYS_PATH` (restored by `Use-DockerEnv`).
 
 - [ ] **Step 1: Write** `deploy/env/compose.yml` per spec §4.6: services `migrate`/`seed` (image `ee/migrator:${EE_TAG}`, network `ee-platform` only, `restart: "no"`, `profiles: ["tools"]` so `up` never starts them), `api`, `web` (networks `ee-platform` + `default` with alias `${EE_ENV}-api` on `default` for api only), env vars, Traefik labels (`traefik.enable=true`, routers `ee-${EE_ENV}-api` / `ee-${EE_ENV}-web`, `loadbalancer.server.port=8080`, api `loadbalancer.healthcheck.path=/health/ready`, `traefik.docker.network=ee-platform`), `ee.*` labels, volume `dpkeys:/keys` on web; networks: `ee-platform: external: true`.
 
 - [ ] **Step 2: Implement** `Invoke-EnvDeploy`, in this order (spec §4.4, §4.5, §4.7):
-  1. env name (`-Env` or from branch / current branch for `-FromWorkingTree`); owner check: running containers' `ee.branch` ≠ this branch and no `-Force` → throw `"Env '<e>' runs branch '<owner>'. Use -Force to take it over."`
-  2. code: `Resolve-Commit` → worktree add/checkout `--detach`; `-FromWorkingTree` → repo root, tag `wt-<env>`, commit label `working-tree`; compose file from that tree, missing → throw.
-  3. images: skip if all three `ee/*:<tag>` exist (unless `-Rebuild` or working tree); else `docker build -f src/<Project>/Dockerfile -t ee/<name>:<tag> <context>` for api, web, migrator (DbTool Dockerfile).
+  1. env name (`-Env`, else from `-Branch` / the current branch); owner check: running containers' `ee.branch` ≠ this branch and no `-Force` → throw `"Env '<e>' runs branch '<owner>'. Use -Force to take it over."`
+  2. code: `-Branch`/`-Committed` → `Resolve-Commit`/HEAD → worktree add/checkout `--detach` (`ee.source=worktree`); default → repo root (`ee.source=local`), tag `<sha12>` if `git status --porcelain` is empty, else `wt-<env>` + commit label `<sha>+dirty`; compose file from that tree, missing → throw.
+  3. images: skip if all three `ee/*:<tag>` exist (unless `-Rebuild` or a dirty local checkout); else `docker build -f src/<Project>/Dockerfile -t ee/<name>:<tag> <context>` for api, web, migrator (DbTool Dockerfile).
   4. `Start-Platform`.
   5. role/db (`Invoke-PlatformSql`, idempotent: create role if missing; create database owner role if missing; `REVOKE CONNECT ON DATABASE … FROM PUBLIC`). Password: `$current = Get-RunningApiPassword`; `$new = New-DbPassword`; if `$current` is null → `ALTER/CREATE ROLE … PASSWORD $new` now and use `$new` for migrate/seed; else use `$current`.
   6. `compose run --rm migrate`, then `compose run --rm seed` (with the chosen password in `EE_DB_PASSWORD`). Failure → throw (old env untouched).
@@ -194,7 +194,7 @@ Also: a 34th char that is `-` → head is trimmed (`('a'*32)+'-b'*10` → head w
 
 - [ ] **Step 3: Write** `deploy.ps1` (params → `Use-DockerEnv { Invoke-EnvDeploy … }`).
 
-- [ ] **Step 4: Manual DoD** (spec §5): 1 (`-Branch master`), 2 (second branch `demo-x` with a footer change; both serve their own code; data separate; dashboard lists both), 3 (re-deploy master: "images exist, skipping build", data kept), 5 (`-FromWorkingTree`), 6 (scale: `-WebReplicas 2 -NoSharedKeys` → form fails ~half the time with 400; without → always works; footer shows two host names), 8 (commit a migration that fails, e.g. raw SQL `SELECT 1/0`, deploy → stops after migrate, previous version still answers `/health/ready` 200; delete the branch afterwards), 9 (`-Env master -Branch demo-x` refused, `-Force` takes over; redeploy master afterwards). Role isolation (part of 4): `docker exec … psql "host=localhost dbname=ee_master user=ee_demo_x password=<from db-connect>"` → `permission denied for database`.
+- [ ] **Step 4: Manual DoD** (spec §5): 1 (`-Branch master`), 2 (second branch `demo-x` with a footer change; both serve their own code; data separate; dashboard lists both), 3 (re-deploy master: "images exist, skipping build", data kept), 5 (default deploy dirty → `wt-<env>`, clean → `<sha12>`; `-Committed` ignores local changes), 6 (scale: `-WebReplicas 2 -NoSharedKeys` → form fails ~half the time with 400; without → always works; footer shows two host names), 8 (commit a migration that fails, e.g. raw SQL `SELECT 1/0`, deploy → stops after migrate, previous version still answers `/health/ready` 200; delete the branch afterwards), 9 (`-Env master -Branch demo-x` refused, `-Force` takes over; redeploy master afterwards). Role isolation (part of 4): `docker exec … psql "host=localhost dbname=ee_master user=ee_demo_x password=<from db-connect>"` → `permission denied for database`.
 
 - [ ] **Step 5: Run** `dotnet test`, Pester — Expected: green.
 
@@ -208,7 +208,7 @@ Also: a 34th char that is `-` → head is trimmed (`('a'*32)+'-b'*10` → head w
 
 **Interfaces:**
 - Consumes: Task 3 + Task 5 helpers (`Get-EnvComposeArgs`, `Get-WorktreePath`, `Set-EnvComposeVariables`, `Get-EnvContainers`, `Get-RunningApiPassword`).
-- Produces: scripts per spec §4.7. `db-update`/`db-reset` take tag/branch/commit from the api container labels (env not running → throw "deploy it first"); compose file from the worktree (`working-tree` commit → repo root).
+- Produces: scripts per spec §4.7. `db-update`/`db-reset` take tag/branch/commit from the api container labels (env not running → throw "deploy it first"); compose file from the worktree when `ee.source=worktree`, else the repo root.
 
 - [ ] **Step 1: Implement** `destroy.ps1 -Env <e>` (each step tolerates "already gone": `compose down -v --remove-orphans` (compose file from worktree if present, else repo `deploy/env/compose.yml`), `DROP DATABASE IF EXISTS … WITH (FORCE)`, `DROP ROLE IF EXISTS`, `git worktree remove --force` if registered + `git worktree prune`, `docker image rm ee/{api,web,migrator}:wt-<e>` if present).
 

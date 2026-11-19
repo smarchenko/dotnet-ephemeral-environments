@@ -295,6 +295,7 @@ function Set-EnvComposeVariables {
         [Parameter(Mandatory)] [string] $Password,
         [Parameter(Mandatory)] [string] $Branch,
         [Parameter(Mandatory)] [string] $Commit,
+        [Parameter(Mandatory)] [ValidateSet('local', 'worktree')] [string] $Source,
         [AllowEmptyString()] [string] $KeysPath = '/keys'
     )
     $env:EE_ENV = $EnvName
@@ -305,17 +306,35 @@ function Set-EnvComposeVariables {
     $env:EE_DB_PASSWORD = $Password
     $env:EE_BRANCH = $Branch
     $env:EE_COMMIT = $Commit
+    $env:EE_SOURCE = $Source
     $env:EE_DEPLOYED_AT = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
     # An empty string removes the variable; compose then reads ${EE_DP_KEYS_PATH:-} as empty.
     $env:EE_DP_KEYS_PATH = $KeysPath
 }
 
-# Who deploys an env: its branch, marked when it came from a working tree. $null when nothing is deployed.
+# Who deploys an env: the branch of its containers (label ee.branch). $null when nothing is deployed.
 function Get-EnvOwner([object[]] $Containers) {
-    $labels = $Containers | Where-Object { $_.Labels -and $_.Labels['ee.branch'] } |
-        Select-Object -First 1 -ExpandProperty Labels
-    if (-not $labels) { return $null }
-    if ($labels['ee.commit'] -eq 'working-tree') { "$($labels['ee.branch']) (working tree)" } else { $labels['ee.branch'] }
+    $Containers | Where-Object { $_.Labels -and $_.Labels['ee.branch'] } |
+        Select-Object -First 1 | ForEach-Object { $_.Labels['ee.branch'] }
+}
+
+# Checks out a commit into .ee/worktrees/<env> (created on first use, moved on re-deploy); returns its path.
+# git's own output goes to the host, so the function returns only the path.
+function Update-EnvWorktree([string] $EnvName, [string] $Sha) {
+    $root = Get-RepoRoot
+    $path = Get-WorktreePath -EnvName $EnvName
+    git -C $root worktree prune
+    if (Test-Path (Join-Path $path '.git')) {
+        Invoke-Native "Check out $($Sha.Substring(0, 12)) in .ee/worktrees/$EnvName" {
+            git -C $path checkout --detach --force --quiet $Sha
+        } | Out-Host
+    }
+    else {
+        Invoke-Native "Create worktree .ee/worktrees/$EnvName at $($Sha.Substring(0, 12))" {
+            git -C $root worktree add --detach --force $path $Sha
+        } | Out-Host
+    }
+    $path
 }
 
 function Test-DockerImage([string] $Name) {
@@ -342,12 +361,14 @@ function Wait-HttpOk([string] $Url, [string] $HostName, [int] $TimeoutSeconds = 
 function Invoke-EnvDeploy {
     <#
     .SYNOPSIS
-        Deploys a branch (or the working tree) as env <env>; see deploy/deploy.ps1. Run inside Use-DockerEnv.
+        Deploys code as env <env>; see deploy/deploy.ps1. Run inside Use-DockerEnv.
+        Default: the current branch from the local checkout (uncommitted changes included). -Committed: its HEAD
+        commit only (worktree, like CI). -Branch: another branch's commit (worktree).
     #>
-    [CmdletBinding(DefaultParameterSetName = 'Branch')]
+    [CmdletBinding(DefaultParameterSetName = 'Current')]
     param(
+        [Parameter(ParameterSetName = 'Current')] [switch] $Committed,
         [Parameter(Mandatory, ParameterSetName = 'Branch')] [string] $Branch,
-        [Parameter(Mandatory, ParameterSetName = 'WorkingTree')] [switch] $FromWorkingTree,
         [string] $Env,
         [switch] $Force,
         [switch] $Rebuild,
@@ -357,59 +378,50 @@ function Invoke-EnvDeploy {
     )
     $root = Get-RepoRoot
 
-    # 1. What is deployed, under which name, and is the env free for it.
-    if ($FromWorkingTree) {
-        $branchName = "$(git -C $root branch --show-current)".Trim()
-        if (-not $branchName) {
-            if (-not $Env) { throw 'HEAD is detached; pass -Env <name>.' }
-            $branchName = 'detached'
-        }
-        $commitLabel = 'working-tree'
-        $me = "$branchName (working tree)"
-    }
-    else {
+    # 1. Which commit and branch, under which name, and is the env free for it.
+    if ($PSCmdlet.ParameterSetName -eq 'Branch') {
         $commit = Resolve-Commit -Branch $Branch
         $branchName = $commit.BranchName
-        $commitLabel = $commit.Sha
-        $me = $branchName
+        $sha = $commit.Sha
+    }
+    else {
+        $branchName = "$(git -C $root branch --show-current)".Trim()
+        if (-not $branchName) {
+            if (-not $Env) { throw 'HEAD is detached; pass -Env <name> (or -Branch <name>).' }
+            $branchName = '(detached)'
+        }
+        $sha = "$(git -C $root rev-parse HEAD)".Trim()
     }
     $envName = if ($Env) { Get-EnvName -Env $Env } else { Get-EnvName -Branch $branchName }
     $db = ConvertTo-DbName -EnvName $envName
 
     $owner = Get-EnvOwner @(Get-EnvContainers -EnvName $envName)
-    if ($owner -and $owner -ne $me) {
+    if ($owner -and $owner -ne $branchName) {
         if (-not $Force) { throw "Env '$envName' runs branch '$owner'. Use -Force to take it over." }
         Write-Host "Env '$envName' runs branch '$owner'; taking it over (-Force)." -ForegroundColor Yellow
     }
 
-    # 2. Code: a worktree at the commit, or the working tree as it is.
-    if ($FromWorkingTree) {
+    # 2. Code: the local checkout as it is, or a worktree at the commit.
+    $dirty = $false
+    if ($PSCmdlet.ParameterSetName -eq 'Current' -and -not $Committed) {
+        $source = 'local'
         $codeRoot = $root
-        $tag = "wt-$envName"
+        $dirty = [bool] (git -C $root status --porcelain)
     }
     else {
-        $codeRoot = Get-WorktreePath -EnvName $envName
-        $tag = $commit.Sha12
-        git -C $root worktree prune
-        if (Test-Path (Join-Path $codeRoot '.git')) {
-            Invoke-Native "Check out $($commit.Sha12) in .ee/worktrees/$envName" {
-                git -C $codeRoot checkout --detach --force --quiet $commit.Sha
-            }
-        }
-        else {
-            Invoke-Native "Create worktree .ee/worktrees/$envName at $($commit.Sha12)" {
-                git -C $root worktree add --detach --force $codeRoot $commit.Sha
-            }
-        }
+        $source = 'worktree'
+        $codeRoot = Update-EnvWorktree -EnvName $envName -Sha $sha
     }
+    $tag = if ($dirty) { "wt-$envName" } else { $sha.Substring(0, 12) }
+    $commitLabel = if ($dirty) { "$sha+dirty" } else { $sha }
     $composeFile = Join-Path $codeRoot 'deploy/env/compose.yml'
     if (-not (Test-Path $composeFile)) {
-        throw "'$me' has no deploy/env/compose.yml (the commit is older than stage 2), so it cannot be deployed as an env."
+        throw "'$branchName' at $($sha.Substring(0, 12)) has no deploy/env/compose.yml (older than stage 2), so it cannot be deployed as an env."
     }
 
-    # 3. Images: built once per commit; the working tree is always rebuilt (the layer cache keeps it fast).
+    # 3. Images: built once per commit; uncommitted changes are always rebuilt (the layer cache keeps it fast).
     $missing = @($script:EnvImages.Keys | Where-Object { -not (Test-DockerImage "ee/${_}:$tag") })
-    if (-not $FromWorkingTree -and -not $Rebuild -and $missing.Count -eq 0) {
+    if (-not $dirty -and -not $Rebuild -and $missing.Count -eq 0) {
         Write-Host "==> Images ee/{api,web,migrator}:$tag exist, skipping build" -ForegroundColor Cyan
     }
     else {
@@ -441,7 +453,9 @@ REVOKE CONNECT ON DATABASE "$db" FROM PUBLIC;
     # 6. Migrations + demo data, before the apps change: a failure leaves the running version serving.
     $composeArgs = Get-EnvComposeArgs -EnvName $envName -ComposeFile $composeFile
     $keysPath = if ($NoSharedKeys) { '' } else { '/keys' }
-    $variables = @{ EnvName = $envName; Tag = $tag; Branch = $branchName; Commit = $commitLabel; KeysPath = $keysPath }
+    $variables = @{
+        EnvName = $envName; Tag = $tag; Branch = $branchName; Commit = $commitLabel; Source = $source; KeysPath = $keysPath
+    }
     Set-EnvComposeVariables @variables -Password $(if ($current) { $current } else { $newPassword })
     Invoke-Native 'Apply migrations (efbundle)' { docker compose @composeArgs run --rm migrate }
     Invoke-Native 'Seed demo data' { docker compose @composeArgs run --rm seed }
@@ -471,11 +485,15 @@ REVOKE CONNECT ON DATABASE "$db" FROM PUBLIC;
     Write-Host "Env '$envName' is up:" -ForegroundColor Green
     Write-Host "  Web        http://${webHost}:$env:EE_PROXY_PORT"
     Write-Host "  API        http://${apiHost}:$env:EE_PROXY_PORT   (Swagger: /swagger)"
-    Write-Host "  Branch     $me"
+    Write-Host "  Branch     $branchName   (code: $(if ($source -eq 'local') { 'local checkout' } else { ".ee/worktrees/$envName" }))"
     Write-Host "  Commit     $commitLabel   (images ee/*:$tag)"
     Write-Host "  Replicas   api x$ApiReplicas, web x$WebReplicas$(if ($NoSharedKeys) { ', Data Protection keys NOT shared' })"
     Write-Host "  Database   $db   (./deploy/db-connect.ps1 -Env $envName)"
     Write-Host "  Dashboard  http://localhost:$dashboard/dashboard/"
+    if ($dirty) {
+        Write-Host ''
+        Write-Host 'Includes uncommitted changes. To deploy only what is committed (as CI will): -Committed' -ForegroundColor Yellow
+    }
 }
 
 Export-ModuleMember -Function Get-EnvName, ConvertTo-DbName, New-DbPassword, Get-RepoRoot, Resolve-Commit,

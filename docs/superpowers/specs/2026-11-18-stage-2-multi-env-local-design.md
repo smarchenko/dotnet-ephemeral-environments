@@ -20,8 +20,9 @@ The stage-1 setup (`deploy/local/`, one env on fixed ports, IDE workflow) stays 
 
 Goals
 - Long-lived **platform**: Traefik (`:8080`) + one shared PostgreSQL.
-- `deploy -Branch <name>` (committed code of a branch, via `git worktree`) and `deploy -FromWorkingTree`
-  (uncommitted code, for trying the scripts themselves). Re-deploy of the same env keeps its database: only new
+- `deploy` = the current branch **as it is on disk** (uncommitted changes included); `deploy -Committed` = only its
+  committed code (like CI); `deploy -Branch <name>` = another branch's committed code, via `git worktree`, without
+  touching the local checkout (revised by user 2026-11-19, see §3). Re-deploy of the same env keeps its database: only new
   migrations and new seed sets run, QA data stays.
 - Every env: own compose project, own database + own Postgres role, URLs `<env>.localhost:8080` (Web) and
   `<env>-api.localhost:8080` (API).
@@ -57,6 +58,13 @@ Where the code comes from (user, 2026-11-18): **(b) `git worktree`** checkout of
 plus `-FromWorkingTree` for uncommitted code. Rejected: (a) always the working tree (not what CI deploys),
 (c) `git archive | docker build -` (stateless, but piping binary tar through PowerShell into a native command is
 fragile on Windows).
+
+**Revised 2026-11-19 (user):** locally one usually deploys the branch one is on and expects the local files to be
+used, so the default is flipped. `deploy` (no switches) builds from the local checkout; if it has no uncommitted
+changes it is identical to the commit and gets the commit's tag (`<sha12>`, images reused), otherwise `wt-<env>`
+(always rebuilt) and commit label `<sha>+dirty`. `-Committed` deploys only the committed HEAD through a worktree
+(CI parity check). `-Branch <name>` stays for another branch (worktree). `-FromWorkingTree` is gone; an env's owner
+is simply its branch, whichever of the three ways deployed it.
 
 ## 4. Design
 
@@ -112,25 +120,30 @@ hosts `<env>.${EE_DOMAIN}` / `<env>-api.${EE_DOMAIN}` with `EE_DOMAIN=localhost`
 
 ### 4.4 Code and images
 
-- `-Branch <name>`: resolve with `git rev-parse --verify <ref>^{commit}`: the local branch `<name>`, else
+Three sources (revised 2026-11-19):
+- **default** (no switch): the current branch from the local checkout. Build context = repo root. No uncommitted
+  or untracked changes (`git status --porcelain` empty) → tag `<sha12>` of HEAD, images reused like a commit;
+  otherwise tag **`wt-<env>`**, always rebuilt (layer cache keeps it fast), commit label `<sha>+dirty`, and the
+  script warns that the env includes uncommitted changes. Detached HEAD → `-Env` required.
+- **`-Committed`**: the current branch's HEAD commit only, through the worktree below (what CI will deploy).
+- **`-Branch <name>`** (another branch, the local checkout is not touched): resolve with `git rev-parse --verify <ref>^{commit}`: the local branch `<name>`, else
   `<remote>/<name>` over all remotes (this repo has `github`; `azure` comes in stage 8). Several remotes with
   different commits → error asking for the full ref (`-Branch github/feature-x`); the env name is taken from the part
   after the remote. No automatic fetch (error hint: `git fetch`). Worktree `.ee/worktrees/<env>`: created with
   `git worktree add --detach`, or moved to the new commit with `git -C … checkout --detach <sha>` on re-deploy.
 - Image tags: `ee/api`, `ee/web`, `ee/migrator` : **`<sha12>`** (first 12 chars of the commit). If all three
   tags exist, nothing is built (`-Rebuild` forces). Build context = the worktree root, Dockerfiles unchanged.
-- `-FromWorkingTree`: build context = repo root, tag **`wt-<env>`**, always rebuilt (layer cache keeps it fast).
-  Env name defaults to the current branch.
 - `.dockerignore` and `.gitignore` get `.ee/`.
-- Containers carry labels `ee.env`, `ee.branch`, `ee.commit` (sha or `working-tree`), `ee.deployed-at` (UTC ISO).
+- Containers carry labels `ee.env`, `ee.branch`, `ee.commit` (sha, or `<sha>+dirty`), `ee.source` (`local` = repo
+  root, `worktree` = `.ee/worktrees/<env>`), `ee.deployed-at` (UTC ISO).
   `list`, `db-update`, `db-reset` read the deployed tag and branch from these labels: the running env is the
   state, no state files.
 - **The env compose file comes from the deployed commit** (`.ee/worktrees/<env>/deploy/env/compose.yml`; the
-  working tree's for `-FromWorkingTree`), so a branch that changes it is deployed the way CI will deploy it (CI checks
+  local checkout's for a default deploy), so a branch that changes it is deployed the way CI will deploy it (CI checks
   out one commit for scripts, compose and code). The scripts themselves run from the current checkout. A commit
   without `deploy/env/compose.yml` (older than stage 2) → error. `db-update`/`db-reset` use the same worktree.
 - **One env = one branch.** If the env already runs with a different `ee.branch` label (two branches normalise to the
-  same name, an explicit `-Env`, or `-FromWorkingTree` on a branch that also has a `-Branch` env), `deploy` refuses
+  same name, or an explicit `-Env`), `deploy` refuses
   and names the current owner; `-Force` takes the env over (its database and QA data stay). Same branch → normal
   re-deploy.
 
@@ -186,7 +199,7 @@ Variables from the script: `EE_ENV` (also `App__EnvironmentName` of every servic
 
 | Script | What it does |
 |---|---|
-| `deploy.ps1 (-Branch <b> \| -FromWorkingTree) [-Env <e>] [-Force] [-Rebuild] [-ApiReplicas n] [-WebReplicas n] [-NoSharedKeys]` | preflight → env name → owner check (§4.4) → code (worktree) → images (skip if present) → platform up → role/db → `migrate` → `seed` → password (§4.5) → `up -d --wait --scale …` → wait for `/health/ready` through Traefik → print URLs, branch, commit, database |
+| `deploy.ps1 [-Committed \| -Branch <b>] [-Env <e>] [-Force] [-Rebuild] [-ApiReplicas n] [-WebReplicas n] [-NoSharedKeys]` | preflight → env name → owner check (§4.4) → code (worktree) → images (skip if present) → platform up → role/db → `migrate` → `seed` → password (§4.5) → `up -d --wait --scale …` → wait for `/health/ready` through Traefik → print URLs, branch, commit, database |
 | `destroy.ps1 -Env <e>` | `compose down -v --remove-orphans` → `DROP DATABASE … WITH (FORCE)` → `DROP ROLE` → `git worktree remove --force` → remove `wt-<env>` images. Every step tolerates "already gone", so a half-deployed env can be destroyed. Shared `<sha12>` images stay (`docker image prune` in docs) |
 | `list.ps1` | table: env, branch, commit, deployed at, replicas, Web URL (from container labels; databases without containers listed as orphans) |
 | `db-update.ps1 -Env <e> [-Restore]` | migrate + seed (`--restore`) with the env's deployed `migrator` tag |
@@ -225,7 +238,7 @@ for `/` of the Web. Re-deploying the same commit just recreates the containers (
 
 ### 4.10 Docs
 
-- New **`docs/environments.md`**: platform, deploy/destroy/list, naming, code source (worktree vs working tree),
+- New **`docs/environments.md`**: platform, deploy/destroy/list, naming, code source (local checkout vs `-Committed` vs `-Branch`),
   database access, the scale experiment, troubleshooting (port 8080 busy, `*.localhost` in PowerShell).
 - README: quick start gets the `deploy`/`destroy` lines + link; CLAUDE.md docs list gets `environments.md`.
 - Parent spec: stage 2 row → link + "Done" when done; §4 `app_<env>` → `ee_<env>`. STATUS.
@@ -240,7 +253,8 @@ for `/` of the Web. Re-deploying the same commit just recreates the containers (
 3. Re-deploy `master` (no code change): no image build, data added in step 2 still there, new migrations only.
 4. `list.ps1` shows both; `db-connect.ps1 -Env demo-x -Psql` → `select count(*) from products`.
    The `demo-x` role cannot connect to `ee_master`.
-5. `-FromWorkingTree` with an uncommitted change deploys it as `wt-<env>`.
+5. `deploy` with an uncommitted change deploys it as `wt-<env>` (`+dirty`); after committing, `deploy` reuses or
+   builds `<sha12>`; `-Committed` with an uncommitted change deploys without it.
 6. Scale: §4.8 experiment, both halves.
 7. `destroy.ps1 -Env demo-x`: containers, volume, database, role, worktree gone; `master` still works.
 8. A broken migration on a branch → deploy stops after `migrate`, the env's previous version keeps running and

@@ -1,30 +1,37 @@
 #Requires -Version 7.2
 <#
 .SYNOPSIS
-    Deploys a branch (or the working tree) as an ephemeral environment: http://<env>.localhost:8080.
+    Deploys code as an ephemeral environment: http://<env>.localhost:8080.
 .DESCRIPTION
-    -Branch <b>        committed code of a branch (local, else <remote>/<b>; no fetch), checked out into
-                       .ee/worktrees/<env>; images ee/{api,web,migrator}:<sha12> are built once per commit.
-    -FromWorkingTree   the current checkout as it is (uncommitted changes too); images ee/*:wt-<env>, always rebuilt.
+    (no switch)    the current branch as it is on disk, uncommitted changes included. Nothing uncommitted ->
+                   images ee/{api,web,migrator}:<sha12> (built once per commit, reused); otherwise ee/*:wt-<env>,
+                   always rebuilt, and the env is labelled <sha>+dirty.
+    -Committed     the current branch's HEAD commit only, checked out into .ee/worktrees/<env> (what CI deploys).
+    -Branch <b>    another branch's commit (local, else <remote>/<b>; no fetch), in .ee/worktrees/<env>;
+                   your checkout is not touched.
     Env name: -Env, else the branch name normalized (feature/Add-X -> feature-add-x). One env = one branch:
     deploying another branch onto a taken name is refused unless -Force.
     Steps: images -> platform (Traefik + Postgres) -> database ee_<env> -> migrate -> seed -> new DB password ->
     api + web -> wait for /health/ready and / through Traefik. A failing migrate/seed leaves the running version up.
     See docs/environments.md.
 .EXAMPLE
-    ./deploy/deploy.ps1 -Branch master
+    ./deploy/deploy.ps1
 .EXAMPLE
-    ./deploy/deploy.ps1 -FromWorkingTree -Env my-wip
+    ./deploy/deploy.ps1 -Committed
 .EXAMPLE
-    ./deploy/deploy.ps1 -Branch master -WebReplicas 2 -NoSharedKeys    # the antiforgery experiment
+    ./deploy/deploy.ps1 -Branch feature-y
+.EXAMPLE
+    ./deploy/deploy.ps1 -WebReplicas 2 -NoSharedKeys    # the antiforgery experiment
 #>
-[CmdletBinding(DefaultParameterSetName = 'Branch')]
+[CmdletBinding(DefaultParameterSetName = 'Current')]
 param(
+    # Only the committed code of the current branch (ignore local changes).
+    [Parameter(ParameterSetName = 'Current')]
+    [switch] $Committed,
+
+    # Another branch (its committed code).
     [Parameter(Mandatory, ParameterSetName = 'Branch')]
     [string] $Branch,
-
-    [Parameter(Mandatory, ParameterSetName = 'WorkingTree')]
-    [switch] $FromWorkingTree,
 
     # Env name in normal form (lowercase, [a-z0-9-]); default: from the branch.
     [string] $Env,
