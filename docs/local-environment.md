@@ -86,7 +86,7 @@ Preview environments get the same steps per environment (stages 2 and 6b).
    # next runs:  No migrations were applied ...               Skipped 0001-products (already applied)
    ```
 
-3. <http://localhost:5080>: the 5 demo products, rendered server-side; the footer shows `Environment: local`.
+3. <http://localhost:5080>: the 5 demo products, rendered server-side; the footer shows `Environment: local · <container id>`.
    `curl http://localhost:5081/products/0196a000-0000-7000-8000-000000000001` → 200.
 4. <http://localhost:5080/Home/Widget>: add a product; DevTools → Network shows the cross-origin calls to `:5081`.
    <http://localhost:5080/Home/Create> ("Add (form)"): the same through a server-side form (the Web calls the API);

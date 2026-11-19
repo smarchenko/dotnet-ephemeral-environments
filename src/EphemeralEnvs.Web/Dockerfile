@@ -21,6 +21,9 @@ WORKDIR /app
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080
 COPY --from=build /app .
+# Data Protection keys (DataProtection__KeysPath=/keys). Owned by the app user, so an empty named volume mounted here
+# takes this ownership and the non-root process can write the keys.
+RUN mkdir /keys && chown $APP_UID /keys
 # Non-root user built into the .NET images.
 USER $APP_UID
 ENTRYPOINT ["dotnet", "EphemeralEnvs.Web.dll"]

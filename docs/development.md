@@ -227,8 +227,10 @@ dotnet run --project src/EphemeralEnvs.Web        # terminal 2 → http://localh
 |---|---|
 | `/` (Server-side) | product list fetched **by the server** through a typed `HttpClient` (`Api__InternalBaseUrl`, timeout `Api__TimeoutSeconds`, 5 s). API down → the page still renders with "API is unavailable right now." and a warning in the log |
 | `/Home/Widget` | the same list plus an "add product" form, rendered by `wwwroot/js/widget.js`, which calls the API **from the browser** (`Api__PublicBaseUrl`, CORS). Validation errors (ProblemDetails `title` + every field error) are shown inline; API down → "API is unavailable" |
+| `/Home/Create` ("Add (form)") | classic server-side form: the browser posts **to the Web** (antiforgery token required for every POST), the Web calls the API (`Api__InternalBaseUrl`); field errors from the API's ValidationProblemDetails are shown next to the fields; success → back to `/` |
 
-The footer of every page shows `Environment: <App__EnvironmentName>`.
+The footer of every page shows `Environment: <App__EnvironmentName> · <host name>` (in Docker the host name is the
+container id, so with several replicas you see which one rendered the page).
 
 Web configuration (env vars):
 
@@ -238,6 +240,7 @@ Web configuration (env vars):
 | `Api__PublicBaseUrl` | — (required) | `http://localhost:5136` | `http://localhost:5081` | API address for the browser; written at runtime into `<meta name="api-base-url">`, so the image has no build-time config |
 | `Api__TimeoutSeconds` | `5` | `5` | `5` | timeout of a server-side API call; short on purpose (the page waits for it); raise it for a slow environment |
 | `App__EnvironmentName` | `unknown` | `local` | `local` | shown in the footer |
+| `DataProtection__KeysPath` | — | — | — | directory for the Data Protection keys (antiforgery token/cookie). Unset → ASP.NET Core defaults (on Windows the user profile; in a container a folder inside the container, so **each replica has its own keys** and a form rendered by one fails with 400 on another). Branch environments (stage 2) set `/keys`, a volume shared by the env's Web replicas; the image creates `/keys` owned by the app user |
 
 Both `Api__*` URLs must be absolute and the timeout positive; otherwise the Web stops at startup (`ValidateOnStart`),
 not on the first request. Logs are the same JSON format as the API's (both call `builder.AddServiceDefaults()`; an architecture test

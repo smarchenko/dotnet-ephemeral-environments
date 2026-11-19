@@ -16,6 +16,9 @@ builder.Services.AddOptions<ApiOptions>()
     .Validate(ApiOptions.IsValid, "Api:InternalBaseUrl and Api:PublicBaseUrl must be absolute URLs, Api:TimeoutSeconds > 0.")
     .ValidateOnStart();
 
+// Shared keys for several replicas (DataProtection__KeysPath), see DataProtectionSetup.
+builder.AddWebDataProtection();
+
 builder.Services.AddHttpClient<ProductsApiClient>((sp, http) =>
 {
     var options = sp.GetRequiredService<IOptions<ApiOptions>>().Value;
