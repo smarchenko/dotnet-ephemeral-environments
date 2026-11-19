@@ -144,11 +144,12 @@ function Use-DockerEnv {
     .SYNOPSIS
         Runs a block from the repo root against a Linux Docker engine: DOCKER_CONTEXT=desktop-linux unless
         DOCKER_HOST is set (a remote engine). Fails early if Docker is not running or is not a Linux engine.
-        Restores the caller's DOCKER_CONTEXT and location afterwards.
+        Restores the caller's DOCKER_CONTEXT, EE_* variables (Set-EnvComposeVariables) and location afterwards.
     #>
     param([Parameter(Mandatory, Position = 0)] [scriptblock] $ScriptBlock)
 
-    $savedContext = $env:DOCKER_CONTEXT
+    $saved = @{ DOCKER_CONTEXT = $env:DOCKER_CONTEXT }
+    Get-ChildItem env: | Where-Object Name -like 'EE_*' | ForEach-Object { $saved[$_.Name] = $_.Value }
     if (-not $env:DOCKER_HOST) { $env:DOCKER_CONTEXT = 'desktop-linux' }
     Push-Location (Get-RepoRoot)
     try {
@@ -163,7 +164,9 @@ function Use-DockerEnv {
     }
     finally {
         Pop-Location
-        $env:DOCKER_CONTEXT = $savedContext
+        Get-ChildItem env: | Where-Object { $_.Name -like 'EE_*' -and -not $saved.ContainsKey($_.Name) } |
+            ForEach-Object { Remove-Item "env:$($_.Name)" }
+        foreach ($name in $saved.Keys) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
     }
 }
 
@@ -254,6 +257,227 @@ function Get-RunningApiPassword {
     if ($connectionString -match '(?i)(?:^|;)\s*Password\s*=\s*([^;]*)') { $Matches[1] } else { $null }
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+# Environment
+# ---------------------------------------------------------------------------------------------------------------
+
+$script:EnvImages = [ordered]@{
+    api      = 'src/EphemeralEnvs.Api/Dockerfile'
+    web      = 'src/EphemeralEnvs.Web/Dockerfile'
+    migrator = 'src/EphemeralEnvs.DbTool/Dockerfile'
+}
+
+function Get-WorktreePath {
+    <# .SYNOPSIS Git worktree of a -Branch env: <repo>/.ee/worktrees/<env>. #>
+    [OutputType([string])]
+    param([Parameter(Mandatory)] [string] $EnvName)
+    Join-Path (Get-RepoRoot) ".ee/worktrees/$EnvName"
+}
+
+function Get-EnvComposeArgs {
+    <# .SYNOPSIS docker compose arguments of an env: project ee-<env> + its compose file. #>
+    param(
+        [Parameter(Mandatory)] [string] $EnvName,
+        [Parameter(Mandatory)] [string] $ComposeFile
+    )
+    @('-p', "ee-$EnvName", '-f', $ComposeFile)
+}
+
+function Set-EnvComposeVariables {
+    <#
+    .SYNOPSIS
+        Sets the EE_* process variables deploy/env/compose.yml reads (restored by Use-DockerEnv).
+        EE_DOMAIN (localhost) and EE_PROXY_PORT (8080) keep a value the caller already set.
+    #>
+    param(
+        [Parameter(Mandatory)] [string] $EnvName,
+        [Parameter(Mandatory)] [string] $Tag,
+        [Parameter(Mandatory)] [string] $Password,
+        [Parameter(Mandatory)] [string] $Branch,
+        [Parameter(Mandatory)] [string] $Commit,
+        [AllowEmptyString()] [string] $KeysPath = '/keys'
+    )
+    $env:EE_ENV = $EnvName
+    $env:EE_DB = ConvertTo-DbName -EnvName $EnvName
+    $env:EE_TAG = $Tag
+    if (-not $env:EE_DOMAIN) { $env:EE_DOMAIN = 'localhost' }
+    if (-not $env:EE_PROXY_PORT) { $env:EE_PROXY_PORT = '8080' }
+    $env:EE_DB_PASSWORD = $Password
+    $env:EE_BRANCH = $Branch
+    $env:EE_COMMIT = $Commit
+    $env:EE_DEPLOYED_AT = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    # An empty string removes the variable; compose then reads ${EE_DP_KEYS_PATH:-} as empty.
+    $env:EE_DP_KEYS_PATH = $KeysPath
+}
+
+# Who deploys an env: its branch, marked when it came from a working tree. $null when nothing is deployed.
+function Get-EnvOwner([object[]] $Containers) {
+    $labels = $Containers | Where-Object { $_.Labels -and $_.Labels['ee.branch'] } |
+        Select-Object -First 1 -ExpandProperty Labels
+    if (-not $labels) { return $null }
+    if ($labels['ee.commit'] -eq 'working-tree') { "$($labels['ee.branch']) (working tree)" } else { $labels['ee.branch'] }
+}
+
+function Test-DockerImage([string] $Name) {
+    docker image inspect $Name *> $null
+    $LASTEXITCODE -eq 0
+}
+
+# Waits until GET <url> through Traefik (Host header; PowerShell does not resolve *.localhost) returns 200.
+function Wait-HttpOk([string] $Url, [string] $HostName, [int] $TimeoutSeconds = 60) {
+    Write-Host "==> Wait for http://$HostName$(([Uri] $Url).PathAndQuery) (up to $TimeoutSeconds s)" -ForegroundColor Cyan
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $status = $null
+    while ([DateTime]::UtcNow -lt $deadline) {
+        try {
+            $status = (Invoke-WebRequest -Uri $Url -Headers @{ Host = $HostName } -SkipHttpErrorCheck -TimeoutSec 5).StatusCode
+            if ($status -eq 200) { return }
+        }
+        catch { $status = $_.Exception.Message }
+        Start-Sleep -Seconds 2
+    }
+    throw "http://$HostName$(([Uri] $Url).PathAndQuery) did not answer 200 within $TimeoutSeconds s (last: $status)."
+}
+
+function Invoke-EnvDeploy {
+    <#
+    .SYNOPSIS
+        Deploys a branch (or the working tree) as env <env>; see deploy/deploy.ps1. Run inside Use-DockerEnv.
+    #>
+    [CmdletBinding(DefaultParameterSetName = 'Branch')]
+    param(
+        [Parameter(Mandatory, ParameterSetName = 'Branch')] [string] $Branch,
+        [Parameter(Mandatory, ParameterSetName = 'WorkingTree')] [switch] $FromWorkingTree,
+        [string] $Env,
+        [switch] $Force,
+        [switch] $Rebuild,
+        [ValidateRange(1, 10)] [int] $ApiReplicas = 1,
+        [ValidateRange(1, 10)] [int] $WebReplicas = 1,
+        [switch] $NoSharedKeys
+    )
+    $root = Get-RepoRoot
+
+    # 1. What is deployed, under which name, and is the env free for it.
+    if ($FromWorkingTree) {
+        $branchName = "$(git -C $root branch --show-current)".Trim()
+        if (-not $branchName) {
+            if (-not $Env) { throw 'HEAD is detached; pass -Env <name>.' }
+            $branchName = 'detached'
+        }
+        $commitLabel = 'working-tree'
+        $me = "$branchName (working tree)"
+    }
+    else {
+        $commit = Resolve-Commit -Branch $Branch
+        $branchName = $commit.BranchName
+        $commitLabel = $commit.Sha
+        $me = $branchName
+    }
+    $envName = if ($Env) { Get-EnvName -Env $Env } else { Get-EnvName -Branch $branchName }
+    $db = ConvertTo-DbName -EnvName $envName
+
+    $owner = Get-EnvOwner @(Get-EnvContainers -EnvName $envName)
+    if ($owner -and $owner -ne $me) {
+        if (-not $Force) { throw "Env '$envName' runs branch '$owner'. Use -Force to take it over." }
+        Write-Host "Env '$envName' runs branch '$owner'; taking it over (-Force)." -ForegroundColor Yellow
+    }
+
+    # 2. Code: a worktree at the commit, or the working tree as it is.
+    if ($FromWorkingTree) {
+        $codeRoot = $root
+        $tag = "wt-$envName"
+    }
+    else {
+        $codeRoot = Get-WorktreePath -EnvName $envName
+        $tag = $commit.Sha12
+        git -C $root worktree prune
+        if (Test-Path (Join-Path $codeRoot '.git')) {
+            Invoke-Native "Check out $($commit.Sha12) in .ee/worktrees/$envName" {
+                git -C $codeRoot checkout --detach --force --quiet $commit.Sha
+            }
+        }
+        else {
+            Invoke-Native "Create worktree .ee/worktrees/$envName at $($commit.Sha12)" {
+                git -C $root worktree add --detach --force $codeRoot $commit.Sha
+            }
+        }
+    }
+    $composeFile = Join-Path $codeRoot 'deploy/env/compose.yml'
+    if (-not (Test-Path $composeFile)) {
+        throw "'$me' has no deploy/env/compose.yml (the commit is older than stage 2), so it cannot be deployed as an env."
+    }
+
+    # 3. Images: built once per commit; the working tree is always rebuilt (the layer cache keeps it fast).
+    $missing = @($script:EnvImages.Keys | Where-Object { -not (Test-DockerImage "ee/${_}:$tag") })
+    if (-not $FromWorkingTree -and -not $Rebuild -and $missing.Count -eq 0) {
+        Write-Host "==> Images ee/{api,web,migrator}:$tag exist, skipping build" -ForegroundColor Cyan
+    }
+    else {
+        foreach ($image in $script:EnvImages.Keys) {
+            $dockerfile = Join-Path $codeRoot $script:EnvImages[$image]
+            Invoke-Native "Build ee/${image}:$tag" { docker build -f $dockerfile -t "ee/${image}:$tag" $codeRoot }
+        }
+    }
+
+    # 4. Platform (Traefik + shared Postgres), started only if it is not running.
+    Start-Platform
+
+    # 5. Role + database. A running api keeps its password until migrate and seed succeed (spec 4.5).
+    $newPassword = New-DbPassword
+    $current = Get-RunningApiPassword -EnvName $envName
+    $roleExists = "$(Invoke-PlatformSql -Sql "SELECT 1 FROM pg_roles WHERE rolname = '$db';")".Trim() -eq '1'
+    if (-not $roleExists) { $current = $null }
+
+    Write-Host "==> Database $db (role, database, connect only for its own role)" -ForegroundColor Cyan
+    $roleSql = if (-not $roleExists) { "CREATE ROLE `"$db`" LOGIN PASSWORD '$newPassword';" }
+    elseif (-not $current) { "ALTER ROLE `"$db`" PASSWORD '$newPassword';" }
+    else { '' }
+    Invoke-PlatformSql -Sql @"
+$roleSql
+SELECT 'CREATE DATABASE "$db" OWNER "$db"' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$db')\gexec
+REVOKE CONNECT ON DATABASE "$db" FROM PUBLIC;
+"@ | Out-Null
+
+    # 6. Migrations + demo data, before the apps change: a failure leaves the running version serving.
+    $composeArgs = Get-EnvComposeArgs -EnvName $envName -ComposeFile $composeFile
+    $keysPath = if ($NoSharedKeys) { '' } else { '/keys' }
+    $variables = @{ EnvName = $envName; Tag = $tag; Branch = $branchName; Commit = $commitLabel; KeysPath = $keysPath }
+    Set-EnvComposeVariables @variables -Password $(if ($current) { $current } else { $newPassword })
+    Invoke-Native 'Apply migrations (efbundle)' { docker compose @composeArgs run --rm migrate }
+    Invoke-Native 'Seed demo data' { docker compose @composeArgs run --rm seed }
+
+    # 7. Rotate the password only now.
+    if ($current) {
+        Write-Host '==> Rotate the database password' -ForegroundColor Cyan
+        Invoke-PlatformSql -Sql "ALTER ROLE `"$db`" PASSWORD '$newPassword';" | Out-Null
+    }
+
+    # 8. Apps with the new password (containers are recreated: new password, new deployed-at label).
+    Set-EnvComposeVariables @variables -Password $newPassword
+    Invoke-Native "Start api x$ApiReplicas + web x$WebReplicas" {
+        docker compose @composeArgs up --detach --wait --remove-orphans --scale "api=$ApiReplicas" --scale "web=$WebReplicas" api web
+    }
+
+    # 9. Through Traefik, as a browser would.
+    $proxy = "http://localhost:$env:EE_PROXY_PORT"
+    $apiHost = "$envName-api.$env:EE_DOMAIN"
+    $webHost = "$envName.$env:EE_DOMAIN"
+    Wait-HttpOk -Url "$proxy/health/ready" -HostName $apiHost
+    Wait-HttpOk -Url "$proxy/" -HostName $webHost
+
+    # 10. Where it is.
+    $dashboard = if ($env:EE_DASHBOARD_PORT) { $env:EE_DASHBOARD_PORT } else { '8090' }
+    Write-Host ''
+    Write-Host "Env '$envName' is up:" -ForegroundColor Green
+    Write-Host "  Web        http://${webHost}:$env:EE_PROXY_PORT"
+    Write-Host "  API        http://${apiHost}:$env:EE_PROXY_PORT   (Swagger: /swagger)"
+    Write-Host "  Branch     $me"
+    Write-Host "  Commit     $commitLabel   (images ee/*:$tag)"
+    Write-Host "  Replicas   api x$ApiReplicas, web x$WebReplicas$(if ($NoSharedKeys) { ', Data Protection keys NOT shared' })"
+    Write-Host "  Database   $db   (./deploy/db-connect.ps1 -Env $envName)"
+    Write-Host "  Dashboard  http://localhost:$dashboard/dashboard/"
+}
+
 Export-ModuleMember -Function Get-EnvName, ConvertTo-DbName, New-DbPassword, Get-RepoRoot, Resolve-Commit,
 Invoke-Native, Use-DockerEnv, Invoke-PlatformCompose, Start-Platform, Invoke-PlatformSql, Get-EnvContainers,
-Get-RunningApiPassword
+Get-RunningApiPassword, Get-WorktreePath, Get-EnvComposeArgs, Set-EnvComposeVariables, Invoke-EnvDeploy

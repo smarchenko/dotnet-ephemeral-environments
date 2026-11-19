@@ -1,0 +1,57 @@
+# Platform shared by all ephemeral environments on this Docker engine: Traefik (routing by host name) + one
+# PostgreSQL (a database per env). Use ./deploy/platform.ps1 up|down; deploy.ps1 starts it when it is not running.
+# Env projects (ee-<env>) join the network ee-platform; Traefik routes <env>.localhost / <env>-api.localhost to them.
+# Host ports: EE_PROXY_PORT (8080, all envs), EE_DASHBOARD_PORT (8090, Traefik dashboard, local only),
+# EE_PLATFORM_DB_PORT (5442, SQL clients, local only; 5432 belongs to deploy/local).
+name: ee-platform
+
+services:
+  traefik:
+    image: traefik:v3.7.19
+    command:
+      - --providers.docker=true
+      # Only containers with traefik.enable=true are routed.
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=ee-platform
+      - --entrypoints.web.address=:80
+      # Dashboard + API on :8080 without auth: local only.
+      - --api.insecure=true
+      - --api.dashboard=true
+      - --ping=true
+    ports:
+      - "${EE_PROXY_PORT:-8080}:80"
+      - "${EE_DASHBOARD_PORT:-8090}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [ee-platform]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Superuser postgres creates a database + role ee_<env> per env (deploy.ps1). Local default password: postgres.
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_PASSWORD: ${EE_PG_ADMIN_PASSWORD:-postgres}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${EE_PLATFORM_DB_PORT:-5442}:5432"
+    networks: [ee-platform]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+networks:
+  ee-platform:
+    name: ee-platform
+
+volumes:
+  pgdata:
+    name: ee-platform-pgdata

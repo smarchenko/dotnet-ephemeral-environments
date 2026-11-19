@@ -1,0 +1,109 @@
+# One ephemeral environment (Web + API, database in the platform Postgres). Project ee-<env>; use
+# ./deploy/deploy.ps1 (docs/environments.md), which sets the EE_* variables below and runs, in order:
+#   compose run --rm migrate -> compose run --rm seed -> compose up -d --wait api web
+# The script takes this file from the deployed commit, so a branch that changes it is deployed with its own version.
+#   EE_ENV          env name (normal form, see Get-EnvName)      EE_TAG       image tag: <sha12> or wt-<env>
+#   EE_DOMAIN       localhost locally                            EE_PROXY_PORT Traefik port (8080)
+#   EE_DB           database and role ee_<env> (dashes -> underscores, see ConvertTo-DbName)
+#   EE_DB_PASSWORD  password of that role (new on every deploy, never written to a file)
+#   EE_BRANCH, EE_COMMIT, EE_DEPLOYED_AT  labels read back by list/db-* scripts (the running env is the state)
+#   EE_DP_KEYS_PATH /keys = Data Protection keys shared by the web replicas; empty = per replica (-NoSharedKeys)
+# No host ports: everything goes through Traefik (http://<env>.localhost:8080, http://<env>-api.localhost:8080).
+
+x-db-connection: &db-connection Host=postgres;Database=${EE_DB};Username=${EE_DB};Password=${EE_DB_PASSWORD};GSS Encryption Mode=Disable
+
+# Labels are lists: compose interpolates values, not map keys (router names contain ${EE_ENV}), and YAML
+# cannot merge lists, so api/web repeat the ee.* lines.
+x-labels: &ee-labels
+  - ee.env=${EE_ENV}
+  - ee.branch=${EE_BRANCH}
+  - ee.commit=${EE_COMMIT}
+  - ee.deployed-at=${EE_DEPLOYED_AT}
+
+x-migrator: &migrator
+  image: ee/migrator:${EE_TAG}
+  restart: "no"
+  # Never started by `up`; the script runs them with `compose run --rm` before the apps change.
+  profiles: ["tools"]
+  networks: [ee-platform]
+  labels: *ee-labels
+
+services:
+  # EF Core migration bundle, as the env role (owner of the database).
+  migrate:
+    <<: *migrator
+    command: ["./efbundle", "--connection", *db-connection]
+
+  # Demo data, once per database. db-update.ps1 -Restore runs it with --restore.
+  seed:
+    <<: *migrator
+    command: ["dotnet", "EphemeralEnvs.DbTool.dll", "seed"]
+    environment:
+      ConnectionStrings__Default: *db-connection
+      App__EnvironmentName: ${EE_ENV}
+
+  api:
+    image: ee/api:${EE_TAG}
+    environment:
+      ConnectionStrings__Default: *db-connection
+      # The browser's origin is this env's Web as seen through Traefik.
+      Cors__AllowedOrigins: http://${EE_ENV}.${EE_DOMAIN}:${EE_PROXY_PORT}
+      Swagger__Enabled: "true"
+      App__EnvironmentName: ${EE_ENV}
+    networks:
+      ee-platform: {}
+      default:
+        # The Web calls the API by this name. Not `api`: every env's api is on ee-platform under that name.
+        aliases: ["${EE_ENV}-api"]
+    labels:
+      - ee.env=${EE_ENV}
+      - ee.branch=${EE_BRANCH}
+      - ee.commit=${EE_COMMIT}
+      - ee.deployed-at=${EE_DEPLOYED_AT}
+      - traefik.enable=true
+      - traefik.docker.network=ee-platform
+      - traefik.http.routers.ee-${EE_ENV}-api.rule=Host(`${EE_ENV}-api.${EE_DOMAIN}`)
+      - traefik.http.routers.ee-${EE_ENV}-api.entrypoints=web
+      - traefik.http.routers.ee-${EE_ENV}-api.service=ee-${EE_ENV}-api
+      - traefik.http.services.ee-${EE_ENV}-api.loadbalancer.server.port=8080
+      # Replicas that cannot reach the database get no traffic.
+      - traefik.http.services.ee-${EE_ENV}-api.loadbalancer.healthcheck.path=/health/ready
+      - traefik.http.services.ee-${EE_ENV}-api.loadbalancer.healthcheck.interval=5s
+    restart: unless-stopped
+
+  web:
+    image: ee/web:${EE_TAG}
+    environment:
+      # Server-side calls stay inside the env's own network; the browser goes through Traefik.
+      Api__InternalBaseUrl: http://${EE_ENV}-api:8080
+      Api__PublicBaseUrl: http://${EE_ENV}-api.${EE_DOMAIN}:${EE_PROXY_PORT}
+      Api__TimeoutSeconds: "5"
+      App__EnvironmentName: ${EE_ENV}
+      # Antiforgery tokens must be readable by every replica: shared key ring on the dpkeys volume.
+      DataProtection__KeysPath: ${EE_DP_KEYS_PATH:-}
+    volumes:
+      - dpkeys:/keys
+    networks:
+      ee-platform: {}
+      default: {}
+    labels:
+      - ee.env=${EE_ENV}
+      - ee.branch=${EE_BRANCH}
+      - ee.commit=${EE_COMMIT}
+      - ee.deployed-at=${EE_DEPLOYED_AT}
+      - traefik.enable=true
+      - traefik.docker.network=ee-platform
+      - traefik.http.routers.ee-${EE_ENV}-web.rule=Host(`${EE_ENV}.${EE_DOMAIN}`)
+      - traefik.http.routers.ee-${EE_ENV}-web.entrypoints=web
+      - traefik.http.routers.ee-${EE_ENV}-web.service=ee-${EE_ENV}-web
+      - traefik.http.services.ee-${EE_ENV}-web.loadbalancer.server.port=8080
+    depends_on:
+      - api
+    restart: unless-stopped
+
+networks:
+  ee-platform:
+    external: true
+
+volumes:
+  dpkeys:
