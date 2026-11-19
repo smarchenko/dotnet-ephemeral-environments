@@ -16,7 +16,7 @@
 - Docker: Linux engine; scripts default `DOCKER_CONTEXT=desktop-linux` unless `DOCKER_HOST` is set, restore the caller's env afterwards; preflight `docker info` → `OSType=linux`. Never bind host 80/443.
 - Ports: Traefik `${EE_PROXY_PORT:-8080}`, dashboard `${EE_DASHBOARD_PORT:-8090}`, platform Postgres `${EE_PLATFORM_DB_PORT:-5442}` (local only). Stage 1 (`deploy/local/`, 5080/5081/5432) stays unchanged.
 - Names: compose project `ee-<env>`; database and role `ee_<env>` (`-` → `_`); hosts `<env>.${EE_DOMAIN}` / `<env>-api.${EE_DOMAIN}`, `EE_DOMAIN=localhost`; image repos `ee/api`, `ee/web`, `ee/migrator`, tags `<sha12>` or `wt-<env>`.
-- Env name: lowercase, runs of non-`[a-z0-9]` → `-`, trim `-`; max 40 → first 33 (trailing `-` trimmed) + `-` + 6 hex of SHA-1 of the full sanitized name; empty or `platform` → error.
+- Env name (revised 2026-11-19, spec §4.3): drop a leading `feature/ bugfix/ hotfix/ fix/ story/ chore/`; lowercase, runs of non-`[a-z0-9]` → `-`, trim `-`; max 30 → first 25 cut back to a word boundary + `-` + 4 hex of SHA-1 of the full sanitized name; empty or `platform` → error. (Task 3's test listing below shows the original 40/33/6 rule; tests/deploy/EnvName.Tests.ps1 has the current cases.)
 - Labels on every env service: `ee.env`, `ee.branch`, `ee.commit` (sha or `<sha>+dirty`), `ee.source` (`local` | `worktree`), `ee.deployed-at` (UTC ISO 8601).
 - No secrets written to files; DB password = 32 hex chars from a CSPRNG per deploy, passed via process env to compose. Local platform admin password defaults to `postgres` (`EE_PG_ADMIN_PASSWORD`).
 - Connection strings keep `GSS Encryption Mode=Disable`.

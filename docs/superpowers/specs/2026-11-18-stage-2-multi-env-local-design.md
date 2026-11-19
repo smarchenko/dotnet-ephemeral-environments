@@ -106,10 +106,15 @@ uploaded); nothing in this stage depends on where the build runs.
 ### 4.3 Environment name
 
 `Get-EnvName` (pure function, Pester-tested): from `-Env` if given, else from the branch name.
+- A leading branch type prefix is dropped (case-insensitive): `feature/`, `bugfix/`, `hotfix/`, `fix/`, `story/`,
+  `chore/` — most branches share it and it only makes URLs longer (revised by user 2026-11-19).
 - Lowercase; every run of characters outside `[a-z0-9]` → `-`; trim `-` at both ends.
-  `feature/Add-X_2` → `feature-add-x-2`.
-- Max **40** chars; longer → first 33 chars (trailing `-` trimmed) + `-` + first 6 hex of SHA-1 of the full
-  sanitized name. Keeps `<env>-api` well inside a 63-char DNS label and `ee_<env>` inside Postgres' 63-byte names.
+  `feature/Add-X_2` → `add-x-2`, `my/Add-X_2` → `my-add-x-2`.
+- Max **30** chars (revised 2026-11-19, was 40); longer → first 25 chars cut back to a word boundary (a single long
+  word is cut hard) + `-` + first 4 hex of SHA-1 of the full sanitized name:
+  `feature/14074-introduce-theme-specific-navigation` → `14074-introduce-theme-9dc9`. Two long branches with the
+  same start differ only in the hash; a clash of hashes is caught by the owner check (§4.4). Keeps `<env>-api`
+  inside a 63-char DNS label and `ee_<env>` inside Postgres' 63-byte names.
 - Empty result, or `platform` (clashes with `ee-platform`) → error.
 - An explicit `-Env` must already be in normal form (same rules); otherwise error showing the normalized value.
 - CI adds a prefix (`gh-`, `ado-`) in 6b/8; nothing local.
@@ -232,7 +237,7 @@ for `/` of the Web. Re-deploying the same commit just recreates the containers (
   POST `/Home/Create` without token → 400; with token → API called, redirect to `/`; API 400 ProblemDetails → form
   with the message; API unreachable → friendly message. **Data Protection:** two app instances with the same keys
   directory → a token issued by one is accepted by the other; with separate directories → rejected.
-- Pester 5: `Get-EnvName` cases (§4.3: sanitizing, 40-char cut + hash, `platform`, empty, explicit `-Env`).
+- Pester 5: `Get-EnvName` cases (§4.3: type prefixes, sanitizing, 30-char cut at a word boundary + hash, `platform`, empty, explicit `-Env`).
 - Architecture tests: Web still references only Contracts + ServiceDefaults.
 - Scripts beyond the pure function are checked by hand (§5); automated deploy tests come with CI (6b smoke).
 

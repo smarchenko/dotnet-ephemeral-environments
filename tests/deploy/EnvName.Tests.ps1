@@ -6,7 +6,7 @@ BeforeAll {
 
 Describe 'Get-EnvName -Branch' {
     It 'lowercases and replaces every non [a-z0-9] run with one dash' {
-        Get-EnvName -Branch 'feature/Add-X_2' | Should -Be 'feature-add-x-2'
+        Get-EnvName -Branch 'my/Add-X_2' | Should -Be 'my-add-x-2'
     }
 
     It 'trims leading and trailing dashes' {
@@ -17,10 +17,36 @@ Describe 'Get-EnvName -Branch' {
         Get-EnvName -Branch 'master' | Should -Be 'master'
     }
 
-    It 'shortens a long name to 40 chars: 33-char head + dash + 6 hex' {
+    It 'drops the branch type prefix <Prefix>/' -ForEach @(
+        @{ Prefix = 'feature' }, @{ Prefix = 'bugfix' }, @{ Prefix = 'hotfix' }, @{ Prefix = 'fix' },
+        @{ Prefix = 'story' }, @{ Prefix = 'chore' }, @{ Prefix = 'Feature' }
+    ) {
+        Get-EnvName -Branch "$Prefix/12615-ai-chat-block" | Should -Be '12615-ai-chat-block'
+    }
+
+    It 'keeps a prefix that is not a branch type, or not at the start' {
+        Get-EnvName -Branch 'features/x' | Should -Be 'features-x'
+        Get-EnvName -Branch 'my/feature/x' | Should -Be 'my-feature-x'
+    }
+
+    It 'keeps a name of exactly 30 chars' {
+        Get-EnvName -Branch ('a' * 30) | Should -Be ('a' * 30)
+    }
+
+    It 'shortens a long name at a word boundary + dash + 4 hex' {
+        Get-EnvName -Branch 'feature/14074-introduce-theme-specific-navigation' |
+            Should -Match '^14074-introduce-theme-[0-9a-f]{4}$'
+    }
+
+    It 'cuts a long single word at 25 chars' {
         $name = Get-EnvName -Branch ('a' * 50)
-        $name.Length | Should -Be 40
-        $name | Should -Match '^a{33}-[0-9a-f]{6}$'
+        $name.Length | Should -Be 30
+        $name | Should -Match '^a{25}-[0-9a-f]{4}$'
+    }
+
+    It 'keeps a whole word that ends exactly at the cut' {
+        Get-EnvName -Branch (('a' * 25) + '-tail-words') | Should -Match '^a{25}-[0-9a-f]{4}$'
+        Get-EnvName -Branch (('a' * 24) + '-b' * 10) | Should -Match '^a{24}-[0-9a-f]{4}$'
     }
 
     It 'gives the same short name for the same branch' {
@@ -28,24 +54,18 @@ Describe 'Get-EnvName -Branch' {
     }
 
     It 'gives different short names to long branches that differ only at the end' {
-        Get-EnvName -Branch (('a' * 50) + 'x') | Should -Not -Be (Get-EnvName -Branch (('a' * 50) + 'y'))
-    }
-
-    It 'trims a trailing dash of the shortened head' {
-        $name = Get-EnvName -Branch (('a' * 32) + ('-b' * 10))
-        $name | Should -Match '^a{32}-[0-9a-f]{6}$'
-    }
-
-    It 'keeps a name of exactly 40 chars' {
-        Get-EnvName -Branch ('a' * 40) | Should -Be ('a' * 40)
+        Get-EnvName -Branch 'feature/983-key-date-collection-component' |
+            Should -Not -Be (Get-EnvName -Branch 'feature/983-key-date-collection-component-dev-integration')
     }
 
     It 'rejects a branch that normalizes to an empty name' {
         { Get-EnvName -Branch '///' } | Should -Throw '*empty*'
+        { Get-EnvName -Branch 'feature/' } | Should -Throw '*empty*'
     }
 
     It 'rejects the reserved name platform' {
         { Get-EnvName -Branch 'platform' } | Should -Throw '*reserved*'
+        { Get-EnvName -Branch 'chore/platform' } | Should -Throw '*reserved*'
     }
 }
 
@@ -55,7 +75,8 @@ Describe 'Get-EnvName -Env' {
     }
 
     It 'rejects a name that is not in normal form and suggests the normal one' {
-        { Get-EnvName -Env 'Feature/X' } | Should -Throw "*use 'feature-x'*"
+        { Get-EnvName -Env 'Feature_X' } | Should -Throw "*use 'feature-x'*"
+        { Get-EnvName -Env 'feature/x' } | Should -Throw "*use 'x'*"
     }
 
     It 'rejects the reserved name platform' {

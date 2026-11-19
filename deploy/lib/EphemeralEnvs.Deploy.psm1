@@ -6,8 +6,10 @@
 
 $ErrorActionPreference = 'Stop'
 
-$script:MaxEnvNameLength = 40
-$script:ShortHeadLength = 33
+$script:MaxEnvNameLength = 30
+$script:ShortHashLength = 4
+# Branch type prefixes dropped from env names: they are shared by most branches and only make URLs longer.
+$script:BranchTypePrefixes = @('feature', 'bugfix', 'hotfix', 'fix', 'story', 'chore')
 $script:ReservedEnvNames = @('platform')
 $script:PlatformProject = 'ee-platform'
 
@@ -15,16 +17,22 @@ $script:PlatformProject = 'ee-platform'
 # Names (pure)
 # ---------------------------------------------------------------------------------------------------------------
 
-# Lowercase; every run outside [a-z0-9] -> '-'; trim '-'; longer than 40 -> 33-char head (trailing '-' trimmed)
-# + '-' + first 6 hex of SHA-1 of the full sanitized name.
+# Drops a leading branch type prefix (feature/, bugfix/, ...). Lowercase; every run outside [a-z0-9] -> '-';
+# trim '-'. Longer than 30 -> cut to 25 chars at a word boundary (a single long word is cut hard) + '-' + first
+# 4 hex of SHA-1 of the full sanitized name, so different long branches stay apart.
 function ConvertTo-NormalEnvName([string] $Value) {
-    $sanitized = ($Value.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-')
+    $prefixes = $script:BranchTypePrefixes -join '|'
+    $withoutType = $Value -replace "(?i)^($prefixes)/", ''
+    $sanitized = ($withoutType.ToLowerInvariant() -replace '[^a-z0-9]+', '-').Trim('-')
     if ($sanitized.Length -le $script:MaxEnvNameLength) { return $sanitized }
 
     $hash = [System.Security.Cryptography.SHA1]::HashData([System.Text.Encoding]::UTF8.GetBytes($sanitized))
-    $suffix = [Convert]::ToHexString($hash).Substring(0, 6).ToLowerInvariant()
-    $head = $sanitized.Substring(0, $script:ShortHeadLength).TrimEnd('-')
-    "$head-$suffix"
+    $suffix = [Convert]::ToHexString($hash).Substring(0, $script:ShortHashLength).ToLowerInvariant()
+    $headLength = $script:MaxEnvNameLength - $script:ShortHashLength - 1
+    $head = $sanitized.Substring(0, $headLength)
+    $wordCut = $sanitized[$headLength] -ne '-' -and $head.Contains('-')
+    if ($wordCut) { $head = $head.Substring(0, $head.LastIndexOf('-')) }
+    "$($head.TrimEnd('-'))-$suffix"
 }
 
 function Get-EnvName {
