@@ -236,6 +236,12 @@ function Get-EnvContainers {
             $name, $value = $pair -split '=', 2
             $vars[$name] = $value
         }
+        # ConvertFrom-Json turns ISO date strings (ee.deployed-at) into DateTime; keep labels as written.
+        foreach ($key in @($c.Config.Labels.Keys)) {
+            if ($c.Config.Labels[$key] -is [DateTime]) {
+                $c.Config.Labels[$key] = $c.Config.Labels[$key].ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+            }
+        }
         [pscustomobject]@{
             Name    = $c.Name.TrimStart('/')
             Service = $c.Config.Labels['com.docker.compose.service']
@@ -304,7 +310,9 @@ function Set-EnvComposeVariables {
         [Parameter(Mandatory)] [string] $Branch,
         [Parameter(Mandatory)] [string] $Commit,
         [Parameter(Mandatory)] [ValidateSet('local', 'worktree')] [string] $Source,
-        [AllowEmptyString()] [string] $KeysPath = '/keys'
+        [AllowEmptyString()] [string] $KeysPath = '/keys',
+        # Keep the original deploy time (db-update/db-reset do not deploy new code). Default: now.
+        [string] $DeployedAt
     )
     $env:EE_ENV = $EnvName
     $env:EE_DB = ConvertTo-DbName -EnvName $EnvName
@@ -315,7 +323,7 @@ function Set-EnvComposeVariables {
     $env:EE_BRANCH = $Branch
     $env:EE_COMMIT = $Commit
     $env:EE_SOURCE = $Source
-    $env:EE_DEPLOYED_AT = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+    $env:EE_DEPLOYED_AT = if ($DeployedAt) { $DeployedAt } else { [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ') }
     # An empty string removes the variable; compose then reads ${EE_DP_KEYS_PATH:-} as empty.
     $env:EE_DP_KEYS_PATH = $KeysPath
 }
@@ -364,6 +372,24 @@ function Wait-HttpOk([string] $Url, [string] $HostName, [int] $TimeoutSeconds = 
         Start-Sleep -Seconds 2
     }
     throw "http://$HostName$(([Uri] $Url).PathAndQuery) did not answer 200 within $TimeoutSeconds s (last: $status)."
+}
+
+function Test-DbRole([string] $Db) {
+    "$(Invoke-PlatformSql -Sql "SELECT 1 FROM pg_roles WHERE rolname = '$Db';")".Trim() -eq '1'
+}
+
+# Role + database ee_<env>, idempotent. -Password: create the role with it or change it; empty: keep the password.
+# CONNECT is revoked from PUBLIC, so another env's role cannot open this database (owner and superuser still can).
+function Set-EnvDatabase([string] $Db, [string] $Password) {
+    Write-Host "==> Database $Db (role, database, connect only for its own role)" -ForegroundColor Cyan
+    $lines = @()
+    if ($Password) {
+        $lines += ('DO $do$ BEGIN IF EXISTS (SELECT FROM pg_roles WHERE rolname = ''{0}'') ' +
+            'THEN ALTER ROLE "{0}" PASSWORD ''{1}''; ELSE CREATE ROLE "{0}" LOGIN PASSWORD ''{1}''; END IF; END $do$;') -f $Db, $Password
+    }
+    $lines += 'SELECT ''CREATE DATABASE "{0}" OWNER "{0}"'' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = ''{0}'')\gexec' -f $Db
+    $lines += 'REVOKE CONNECT ON DATABASE "{0}" FROM PUBLIC;' -f $Db
+    Invoke-PlatformSql -Sql ($lines -join "`n") | Out-Null
 }
 
 function Invoke-EnvDeploy {
@@ -445,18 +471,8 @@ function Invoke-EnvDeploy {
     # 5. Role + database. A running api keeps its password until migrate and seed succeed (spec 4.5).
     $newPassword = New-DbPassword
     $current = Get-RunningApiPassword -EnvName $envName
-    $roleExists = "$(Invoke-PlatformSql -Sql "SELECT 1 FROM pg_roles WHERE rolname = '$db';")".Trim() -eq '1'
-    if (-not $roleExists) { $current = $null }
-
-    Write-Host "==> Database $db (role, database, connect only for its own role)" -ForegroundColor Cyan
-    $roleSql = if (-not $roleExists) { "CREATE ROLE `"$db`" LOGIN PASSWORD '$newPassword';" }
-    elseif (-not $current) { "ALTER ROLE `"$db`" PASSWORD '$newPassword';" }
-    else { '' }
-    Invoke-PlatformSql -Sql @"
-$roleSql
-SELECT 'CREATE DATABASE "$db" OWNER "$db"' WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '$db')\gexec
-REVOKE CONNECT ON DATABASE "$db" FROM PUBLIC;
-"@ | Out-Null
+    if (-not (Test-DbRole -Db $db)) { $current = $null }
+    Set-EnvDatabase -Db $db -Password $(if ($current) { '' } else { $newPassword })
 
     # 6. Migrations + demo data, before the apps change: a failure leaves the running version serving.
     $composeArgs = Get-EnvComposeArgs -EnvName $envName -ComposeFile $composeFile
@@ -504,6 +520,294 @@ REVOKE CONNECT ON DATABASE "$db" FROM PUBLIC;
     }
 }
 
+# ---------------------------------------------------------------------------------------------------------------
+# After deploy: list, db-update, db-reset, db-connect, destroy. The running env is the state: everything is read
+# back from its containers' labels and environment (no state files).
+# ---------------------------------------------------------------------------------------------------------------
+
+function Get-ConnectionPassword([object] $Container) {
+    $connectionString = if ($Container) { $Container.Env['ConnectionStrings__Default'] }
+    if ($connectionString -match '(?i)(?:^|;)\s*Password\s*=\s*([^;]*)') { $Matches[1] } else { $null }
+}
+
+function Get-EnvState {
+    <#
+    .SYNOPSIS
+        What is deployed as env <env>, from its api/web containers: tag, branch, commit, code source, deploy time,
+        replica counts, Data Protection keys mode, database password, compose file. Throws if nothing is deployed.
+    #>
+    param([Parameter(Mandatory)] [string] $EnvName)
+
+    $containers = @(Get-EnvContainers -EnvName $EnvName | Where-Object { $_.Service -in 'api', 'web' })
+    if ($containers.Count -eq 0) { throw "Env '$EnvName' is not deployed. Deploy it first: ./deploy/deploy.ps1" }
+    $api = @($containers | Where-Object Service -eq 'api')
+    $web = @($containers | Where-Object Service -eq 'web')
+    if ($api.Count -eq 0) { throw "Env '$EnvName' has no api container. Deploy it again: ./deploy/deploy.ps1" }
+    $labels = $api[0].Labels
+
+    # Envs deployed before the ee.source label existed: a worktree means the code came from there.
+    $worktree = Get-WorktreePath -EnvName $EnvName
+    $source = $labels['ee.source']
+    if (-not $source) { $source = if (Test-Path (Join-Path $worktree '.git')) { 'worktree' } else { 'local' } }
+    $composeRoot = if ($source -eq 'worktree') { $worktree } else { Get-RepoRoot }
+    $composeFile = Join-Path $composeRoot 'deploy/env/compose.yml'
+    if (-not (Test-Path $composeFile)) {
+        throw "Env '$EnvName' was deployed from $composeRoot, but its deploy/env/compose.yml is gone. Deploy it again."
+    }
+
+    [pscustomobject]@{
+        EnvName     = $EnvName
+        Db          = ConvertTo-DbName -EnvName $EnvName
+        Tag         = ($api[0].Image -split ':')[-1]
+        Branch      = $labels['ee.branch']
+        Commit      = $labels['ee.commit']
+        Source      = $source
+        DeployedAt  = $labels['ee.deployed-at']
+        ApiReplicas = [Math]::Max(1, @($api | Where-Object State -eq 'running').Count)
+        WebReplicas = [Math]::Max(1, @($web | Where-Object State -eq 'running').Count)
+        KeysPath    = if ($web.Count -gt 0) { "$($web[0].Env['DataProtection__KeysPath'])" } else { '/keys' }
+        Password    = Get-ConnectionPassword $api[0]
+        ComposeFile = $composeFile
+    }
+}
+
+function Assert-EnvImages([object] $State) {
+    foreach ($image in $script:EnvImages.Keys) {
+        if (-not (Test-DockerImage "ee/${image}:$($State.Tag)")) {
+            throw "Image ee/${image}:$($State.Tag) of env '$($State.EnvName)' is gone (docker image prune?). Deploy it again."
+        }
+    }
+}
+
+# Sets the compose variables so that compose sees the env exactly as deployed (same tag, labels, keys mode).
+function Set-EnvComposeVariablesFromState([object] $State, [string] $Password) {
+    $variables = @{
+        EnvName = $State.EnvName; Tag = $State.Tag; Branch = $State.Branch; Commit = $State.Commit
+        Source = $State.Source; KeysPath = $State.KeysPath; DeployedAt = $State.DeployedAt; Password = $Password
+    }
+    Set-EnvComposeVariables @variables
+}
+
+function Get-DeployedEnvs {
+    <#
+    .SYNOPSIS
+        One row per deployed env (from container labels), plus databases ee_* that have no env (Orphan = $true).
+    #>
+    param()
+    $proxy = if ($env:EE_PROXY_PORT) { $env:EE_PROXY_PORT } else { '8080' }
+    $domain = if ($env:EE_DOMAIN) { $env:EE_DOMAIN } else { 'localhost' }
+    $names = @(docker ps -a --filter label=ee.env --format '{{.Label "ee.env"}}' | Sort-Object -Unique)
+
+    $rows = @(foreach ($name in $names) {
+            $containers = @(Get-EnvContainers -EnvName $name | Where-Object { $_.Service -in 'api', 'web' })
+            if ($containers.Count -eq 0) { continue }
+            $labels = $containers[0].Labels
+            $replicas = foreach ($service in 'api', 'web') {
+                $all = @($containers | Where-Object Service -eq $service)
+                "$(@($all | Where-Object State -eq 'running').Count)/$($all.Count)"
+            }
+            $commit = "$($labels['ee.commit'])"
+            [pscustomobject]@{
+                Env        = $name
+                Branch     = $labels['ee.branch']
+                Commit     = $commit.Substring(0, [Math]::Min(12, $commit.Length)) + $(if ($commit.EndsWith('+dirty')) { '+dirty' })
+                DeployedAt = $labels['ee.deployed-at']
+                Api        = $replicas[0]
+                Web        = $replicas[1]
+                Url        = "http://$name.${domain}:$proxy"
+                Orphan     = $false
+            }
+        })
+
+    $databases = @()
+    try { $databases = @(Invoke-PlatformSql -Sql "SELECT datname FROM pg_database WHERE datname LIKE 'ee\_%' ORDER BY 1;") }
+    catch { Write-Host "Databases not listed: $($_.Exception.Message)" -ForegroundColor Yellow }
+    $known = @($rows | ForEach-Object { ConvertTo-DbName -EnvName $_.Env })
+    $orphans = @(foreach ($db in $databases | Where-Object { $_ -and $_ -notin $known }) {
+            [pscustomobject]@{
+                Env = ($db -replace '^ee_', '' -replace '_', '-'); Branch = '(database only)'; Commit = ''; DeployedAt = ''; Api = ''; Web = ''; Url = ''; Orphan = $true
+            }
+        })
+    $rows + $orphans
+}
+
+function Invoke-EnvDbUpdate {
+    <#
+    .SYNOPSIS
+        New migrations + new seed sets (or seed --restore) on an env's database, with the deployed migrator image
+        and the current password. The apps keep running; the password is not rotated.
+    #>
+    param(
+        [Parameter(Mandatory)] [string] $Env,
+        [switch] $Restore
+    )
+    $envName = Get-EnvName -Env $Env
+    $state = Get-EnvState -EnvName $envName
+    Assert-EnvImages $state
+    Start-Platform
+
+    $composeArgs = Get-EnvComposeArgs -EnvName $envName -ComposeFile $state.ComposeFile
+    Set-EnvComposeVariablesFromState $state -Password $state.Password
+    Invoke-Native 'Apply migrations (efbundle)' { docker compose @composeArgs run --rm migrate }
+    if ($Restore) {
+        Invoke-Native 'Seed demo data (restore deleted)' {
+            docker compose @composeArgs run --rm seed dotnet EphemeralEnvs.DbTool.dll seed --restore
+        }
+    }
+    else {
+        Invoke-Native 'Seed demo data' { docker compose @composeArgs run --rm seed }
+    }
+    Write-Host ''
+    Write-Host "Database $($state.Db) of env '$envName' is up to date." -ForegroundColor Green
+}
+
+function Invoke-EnvDbReset {
+    <#
+    .SYNOPSIS
+        Puts an env's database back to the just-deployed state: drop, create (new password), all migrations, all
+        seed sets, then recreate api/web with the deployed images, replica counts and keys mode.
+    #>
+    param([Parameter(Mandatory)] [string] $Env)
+    $envName = Get-EnvName -Env $Env
+    $state = Get-EnvState -EnvName $envName
+    Assert-EnvImages $state
+    Start-Platform
+
+    $newPassword = New-DbPassword
+    Write-Host "==> Drop database $($state.Db)" -ForegroundColor Cyan
+    Invoke-PlatformSql -Sql "DROP DATABASE IF EXISTS `"$($state.Db)`" WITH (FORCE);" | Out-Null
+    Set-EnvDatabase -Db $state.Db -Password $newPassword
+
+    $composeArgs = Get-EnvComposeArgs -EnvName $envName -ComposeFile $state.ComposeFile
+    Set-EnvComposeVariablesFromState $state -Password $newPassword
+    Invoke-Native 'Apply migrations (efbundle)' { docker compose @composeArgs run --rm migrate }
+    Invoke-Native 'Seed demo data' { docker compose @composeArgs run --rm seed }
+    Invoke-Native "Recreate api x$($state.ApiReplicas) + web x$($state.WebReplicas) with the new password" {
+        docker compose @composeArgs up --detach --wait --force-recreate --remove-orphans `
+            --scale "api=$($state.ApiReplicas)" --scale "web=$($state.WebReplicas)" api web
+    }
+    Wait-HttpOk -Url "http://localhost:$env:EE_PROXY_PORT/health/ready" -HostName "$envName-api.$env:EE_DOMAIN"
+    Write-Host ''
+    Write-Host "Database $($state.Db) of env '$envName' reset: schema from all migrations, demo data from all seed sets." -ForegroundColor Green
+}
+
+function Invoke-EnvDbConnect {
+    <#
+    .SYNOPSIS
+        Prints how to connect to an env's database (as the env role, valid until the next deploy; and as the
+        superuser); -Psql opens psql on it inside the platform Postgres container (no port, no password).
+    #>
+    param(
+        [Parameter(Mandatory)] [string] $Env,
+        [switch] $Psql
+    )
+    $envName = Get-EnvName -Env $Env
+    $db = ConvertTo-DbName -EnvName $envName
+    $container = Get-PlatformPostgresContainer
+    if ("$(Invoke-PlatformSql -Sql "SELECT 1 FROM pg_database WHERE datname = '$db';")".Trim() -ne '1') {
+        throw "Database $db does not exist. Deploy the env first: ./deploy/deploy.ps1"
+    }
+    if ($Psql) {
+        Write-Host "psql on $db as postgres (\q to quit)" -ForegroundColor Cyan
+        docker exec -it $container psql -U postgres -d $db
+        return
+    }
+
+    $port = if ($env:EE_PLATFORM_DB_PORT) { $env:EE_PLATFORM_DB_PORT } else { '5442' }
+    $admin = if ($env:EE_PG_ADMIN_PASSWORD) { $env:EE_PG_ADMIN_PASSWORD } else { 'postgres' }
+    $password = Get-RunningApiPassword -EnvName $envName
+    Write-Host "Database $db on localhost:$port" -ForegroundColor Green
+    if ($password) {
+        Write-Host '  As the env role (valid until the next deploy or db-reset):'
+        Write-Host "    Host=localhost;Port=$port;Database=$db;Username=$db;Password=$password"
+    }
+    else {
+        Write-Host '  The env api is not running, so its role password is unknown; use the superuser.' -ForegroundColor Yellow
+    }
+    Write-Host '  As the superuser (local only):'
+    Write-Host "    Host=localhost;Port=$port;Database=$db;Username=postgres;Password=$admin"
+    Write-Host "  Without a port or password: ./deploy/db-connect.ps1 -Env $envName -Psql"
+}
+
+function Invoke-EnvDestroy {
+    <#
+    .SYNOPSIS
+        Removes everything of an env: containers, network, volumes, database, role, worktree, wt-<env> images.
+        Every step tolerates "already gone", so a half-deployed env can be destroyed too.
+    #>
+    param([Parameter(Mandatory)] [string] $Env)
+    $envName = Get-EnvName -Env $Env
+    $db = ConvertTo-DbName -EnvName $envName
+    $root = Get-RepoRoot
+
+    # The project name is enough: compose finds containers, networks and volumes by their project label.
+    Invoke-Native "Remove containers, network and volumes of ee-$envName" {
+        docker compose -p "ee-$envName" down --volumes --remove-orphans
+    }
+
+    Start-Platform
+    Write-Host "==> Drop database and role $db" -ForegroundColor Cyan
+    Invoke-PlatformSql -Sql "DROP DATABASE IF EXISTS `"$db`" WITH (FORCE);`nDROP ROLE IF EXISTS `"$db`";" | Out-Null
+
+    $worktree = Get-WorktreePath -EnvName $envName
+    Write-Host "==> Remove worktree .ee/worktrees/$envName" -ForegroundColor Cyan
+    if (Test-Path (Join-Path $worktree '.git')) { git -C $root worktree remove --force $worktree }
+    git -C $root worktree prune
+    if (Test-Path $worktree) { Remove-Item -Recurse -Force $worktree }
+
+    Write-Host "==> Remove images ee/*:wt-$envName" -ForegroundColor Cyan
+    foreach ($image in $script:EnvImages.Keys) {
+        if (Test-DockerImage "ee/${image}:wt-$envName") { docker image rm "ee/${image}:wt-$envName" | Out-Null }
+    }
+
+    Write-Host ''
+    Write-Host "Env '$envName' destroyed." -ForegroundColor Green
+    Write-Host "Images ee/*:<sha12> stay (shared by envs on the same commit). Remove unused ones: ./deploy/prune-images.ps1"
+}
+
+function Select-UnusedEnvImages {
+    <#
+    .SYNOPSIS
+        From image references (repo:tag), the ee/* ones whose tag no deployed env uses. The tag, not a running
+        container, decides: the migrator of a deployed env has no container (migrate/seed run with --rm) but
+        db-update and db-reset need it. Untagged images (<none>) are skipped.
+    #>
+    param(
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]] $Images,
+        [Parameter(Mandatory)] [AllowEmptyCollection()] [string[]] $UsedTags
+    )
+
+    foreach ($image in $Images) {
+        if ($image -notmatch '^ee/[^/:]+:(?<tag>.+)$') { continue }
+        $tag = $Matches.tag
+        if ($tag -eq '<none>' -or $tag -in $UsedTags) { continue }
+        $image
+    }
+}
+
+function Invoke-EnvImagePrune {
+    <#
+    .SYNOPSIS
+        Removes ee/* images whose tag no deployed env (any container labelled ee.env) uses.
+    #>
+    $usedTags = @(docker ps -a --filter 'label=ee.env' --format '{{.Image}}' |
+            Where-Object { $_ -match '^ee/[^/:]+:(?<tag>.+)$' } | ForEach-Object { $Matches.tag } | Sort-Object -Unique)
+    $images = @(docker images 'ee/*' --format '{{.Repository}}:{{.Tag}}')
+    $unused = @(Select-UnusedEnvImages -Images $images -UsedTags $usedTags)
+
+    Write-Host "Tags in use by deployed envs: $(if ($usedTags) { $usedTags -join ', ' } else { '(none)' })"
+    if ($unused.Count -eq 0) {
+        Write-Host 'No unused ee/* images.' -ForegroundColor Green
+        return
+    }
+    foreach ($image in $unused) {
+        Invoke-Native "Remove image $image" { docker image rm $image } | Out-Null
+    }
+    Write-Host "Removed $($unused.Count) image(s). Docker frees the space of layers no other image shares." -ForegroundColor Green
+}
+
 Export-ModuleMember -Function Get-EnvName, ConvertTo-DbName, New-DbPassword, Get-RepoRoot, Resolve-Commit,
 Invoke-Native, Use-DockerEnv, Invoke-PlatformCompose, Start-Platform, Invoke-PlatformSql, Get-EnvContainers,
-Get-RunningApiPassword, Get-WorktreePath, Get-EnvComposeArgs, Set-EnvComposeVariables, Invoke-EnvDeploy
+Get-RunningApiPassword, Get-WorktreePath, Get-EnvComposeArgs, Set-EnvComposeVariables, Invoke-EnvDeploy,
+Get-EnvState, Get-DeployedEnvs, Invoke-EnvDbUpdate, Invoke-EnvDbReset, Invoke-EnvDbConnect, Invoke-EnvDestroy,
+Select-UnusedEnvImages, Invoke-EnvImagePrune

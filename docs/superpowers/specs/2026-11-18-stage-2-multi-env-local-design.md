@@ -205,7 +205,7 @@ Variables from the script: `EE_ENV` (also `App__EnvironmentName` of every servic
 | Script | What it does |
 |---|---|
 | `deploy.ps1 [-Committed \| -Branch <b>] [-Env <e>] [-Force] [-Rebuild] [-ApiReplicas n] [-WebReplicas n] [-NoSharedKeys]` | preflight → env name → owner check (§4.4) → code (worktree) → images (skip if present) → platform up → role/db → `migrate` → `seed` → password (§4.5) → `up -d --wait --scale …` → wait for `/health/ready` through Traefik → print URLs, branch, commit, database |
-| `destroy.ps1 -Env <e>` | `compose down -v --remove-orphans` → `DROP DATABASE … WITH (FORCE)` → `DROP ROLE` → `git worktree remove --force` → remove `wt-<env>` images. Every step tolerates "already gone", so a half-deployed env can be destroyed. Shared `<sha12>` images stay (`docker image prune` in docs) |
+| `destroy.ps1 -Env <e>` | `compose down -v --remove-orphans` → `DROP DATABASE … WITH (FORCE)` → `DROP ROLE` → `git worktree remove --force` → remove `wt-<env>` images. Every step tolerates "already gone", so a half-deployed env can be destroyed. Shared `<sha12>` images stay; `prune-images.ps1` removes ee/* images whose tag no deployed env uses (keeps the migrator of a live env) |
 | `list.ps1` | table: env, branch, commit, deployed at, replicas, Web URL (from container labels; databases without containers listed as orphans) |
 | `db-update.ps1 -Env <e> [-Restore]` | migrate + seed (`--restore`) with the env's deployed `migrator` tag |
 | `db-reset.ps1 -Env <e>` | drop + recreate database (rotates the password), migrate, seed, recreate api/web |
