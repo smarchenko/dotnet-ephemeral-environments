@@ -20,7 +20,8 @@ services:
       - --ping=true
     ports:
       - "${EE_PROXY_PORT:-8080}:80"
-      - "${EE_DASHBOARD_PORT:-8090}:8080"
+      # Dashboard and Postgres: this machine only (127.0.0.1), not the LAN.
+      - "127.0.0.1:${EE_DASHBOARD_PORT:-8090}:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks: [ee-platform]
@@ -39,7 +40,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "${EE_PLATFORM_DB_PORT:-5442}:5432"
+      - "127.0.0.1:${EE_PLATFORM_DB_PORT:-5442}:5432"
     networks: [ee-platform]
     restart: unless-stopped
     healthcheck:

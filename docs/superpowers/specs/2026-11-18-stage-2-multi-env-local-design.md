@@ -95,10 +95,10 @@ uploaded); nothing in this stage depends on where the build runs.
 - Network **`ee-platform`** (fixed name, so env projects reference it as `external`).
 - **Traefik v3** (exact tag pinned): docker provider, `exposedByDefault=false`, `network=ee-platform`,
   docker socket mounted read-only; entrypoint `web` → host `${EE_PROXY_PORT:-8080}`; dashboard (insecure API mode)
-  on host `${EE_DASHBOARD_PORT:-8090}`, local only.
+  on host `127.0.0.1:${EE_DASHBOARD_PORT:-8090}`, local only.
 - **Postgres 17**, volume `ee-platform-pgdata`, superuser `postgres`, password `${EE_PG_ADMIN_PASSWORD}`; locally
   the scripts default it to `postgres` (documented, local only; on the server a secret, 6a). Host port
-  `${EE_PLATFORM_DB_PORT:-5442}` published **locally only** (for SQL clients; 5432 belongs to stage 1).
+  `127.0.0.1:${EE_PLATFORM_DB_PORT:-5442}` published **locally only** (for SQL clients; 5432 belongs to stage 1).
   Healthcheck `pg_isready`.
 - `platform.ps1 up` = `compose up -d --wait`; `down [-RemoveData]` (`-RemoveData` drops the volume = all env
   databases). `deploy.ps1` starts the platform if it is not running (`--no-recreate`, never restarts a running one).
@@ -115,7 +115,8 @@ uploaded); nothing in this stage depends on where the build runs.
   `feature/14074-introduce-theme-specific-navigation` → `14074-introduce-theme-9dc9`. Two long branches with the
   same start differ only in the hash; a clash of hashes is caught by the owner check (§4.4). Keeps `<env>-api`
   inside a 63-char DNS label and `ee_<env>` inside Postgres' 63-byte names.
-- Empty result, or `platform` (clashes with `ee-platform`) → error.
+- Empty result, or `platform` (clashes with `ee-platform`), or a name ending in `-api` (env `x-api` would serve its
+  Web at the API host of env `x`; added after the final review 2026-11-23) → error.
 - An explicit `-Env` must already be in normal form (same rules); otherwise error showing the normalized value.
 - CI adds a prefix (`gh-`, `ado-`) in 6b/8; nothing local.
 

@@ -67,6 +67,16 @@ Describe 'Get-EnvName -Branch' {
         { Get-EnvName -Branch 'platform' } | Should -Throw '*reserved*'
         { Get-EnvName -Branch 'chore/platform' } | Should -Throw '*reserved*'
     }
+
+    It 'rejects a name ending in -api: its Web host would be the API host of another env' {
+        { Get-EnvName -Branch 'feature/payments-api' } | Should -Throw "*'payments-api'*-api*payments*"
+        { Get-EnvName -Env 'orders-api' } | Should -Throw '*-api*'
+    }
+
+    It 'keeps -api inside a name' {
+        Get-EnvName -Branch 'feature/api-client' | Should -Be 'api-client'
+        Get-EnvName -Branch 'rapid-api2' | Should -Be 'rapid-api2'
+    }
 }
 
 Describe 'Get-EnvName -Env' {

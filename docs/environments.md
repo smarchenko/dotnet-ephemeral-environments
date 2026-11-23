@@ -57,11 +57,13 @@ not: use `curl.exe` or a `Host` header (see [Troubleshooting](#troubleshooting))
 | 8090 | Traefik dashboard <http://localhost:8090/dashboard/> (routes, services, replicas) | `EE_DASHBOARD_PORT` |
 | 5442 | Shared Postgres for SQL clients (5432 belongs to `deploy/local`) | `EE_PLATFORM_DB_PORT` |
 
-Postgres superuser: `postgres` / `postgres` (override with `EE_PG_ADMIN_PASSWORD`). The dashboard, the open
-Postgres port and this password are **local only**; a server will not publish them.
+Postgres superuser: `postgres` / `postgres` (override with `EE_PG_ADMIN_PASSWORD`). The dashboard and Postgres
+listen on `127.0.0.1` only, so other machines on your network cannot reach them; port 8080 is open to the network.
+The dashboard, the open Postgres port and this password are **local only**; a server will not publish them.
 
 Compose project `ee-platform`, network `ee-platform` (every env joins it), volume `ee-platform-pgdata`.
-`platform.ps1 up` never recreates a running container, so it is safe to run at any time.
+`platform.ps1 up` never recreates a running container, so it is safe to run at any time. After a change to
+`deploy/platform/compose.yml` run `platform.ps1 down`, then `up`: envs keep running and answer again.
 
 ## Deploy
 
@@ -120,7 +122,9 @@ Derived from the branch, or given with `-Env`:
 | `feature/14074-introduce-theme-specific-navigation` | `14074-introduce-theme-9dc9` |
 | `my/feature/x` | `my-feature-x` |
 
-`platform` is reserved. `-Env` must already be in normal form; otherwise the error suggests the right one.
+`platform` is reserved, and a name may not end with `-api`: env `x` serves its API at `x-api.localhost`, so an
+env `x-api` would serve its Web at the same host. `-Env` must already be in normal form; otherwise the error
+suggests the right one.
 The database and role are `ee_<env>` with `-` replaced by `_`.
 
 ## Images

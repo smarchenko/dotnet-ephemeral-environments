@@ -52,6 +52,11 @@ function Get-EnvName {
 
     if (-not $name) { throw "Env name from '$given' is empty; pass -Env <name>." }
     if ($name -in $script:ReservedEnvNames) { throw "Env name '$name' is reserved; pass another -Env <name>." }
+    # Env x publishes its API at x-api.<domain>; an env named x-api would publish its Web at the same host.
+    if ($name.EndsWith('-api')) {
+        $base = $name.Substring(0, $name.Length - 4)
+        throw "Env name '$name' ends with '-api': its Web host would be the API host of env '$base'. Pass another -Env <name>."
+    }
     if ($PSCmdlet.ParameterSetName -eq 'Env' -and $name -cne $Env) {
         throw "Env name '$Env' is not valid; use '$name'."
     }
@@ -469,10 +474,12 @@ function Invoke-EnvDeploy {
     Start-Platform
 
     # 5. Role + database. A running api keeps its password until migrate and seed succeed (spec 4.5).
+    # The role is (re)set to that password: it is a no-op normally and repairs a role whose password drifted
+    # (an interrupted deploy or a failed db-reset), which would otherwise fail every later migrate.
     $newPassword = New-DbPassword
     $current = Get-RunningApiPassword -EnvName $envName
     if (-not (Test-DbRole -Db $db)) { $current = $null }
-    Set-EnvDatabase -Db $db -Password $(if ($current) { '' } else { $newPassword })
+    Set-EnvDatabase -Db $db -Password $(if ($current) { $current } else { $newPassword })
 
     # 6. Migrations + demo data, before the apps change: a failure leaves the running version serving.
     $composeArgs = Get-EnvComposeArgs -EnvName $envName -ComposeFile $composeFile
