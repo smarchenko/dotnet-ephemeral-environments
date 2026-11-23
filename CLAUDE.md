@@ -9,7 +9,7 @@ current stage and next step. **Update `docs/STATUS.md` after every decision or c
 - **After each step, report:** what was added, how it works, and a step-by-step guide to run and test it.
 - **Keep `README.md` (short: quick start + links) and the matching `docs/*.md` up to date** with run instructions
   (every step that changes how to run/test updates them): `docs/local-environment.md` (scripts, demo data, checks),
-  `docs/development.md` (workflow, migrations, seed, IDE, tests, code quality), `docs/architecture.md` (layout, rules).
+  `docs/environments.md` (multi-env scripts: platform, deploy, db-*, troubleshooting), `docs/development.md` (workflow, migrations, seed, IDE, tests, code quality), `docs/architecture.md` (layout, rules).
 - Stack: .NET 10 (MVC Web + API), PostgreSQL, Docker (Linux engine: `DOCKER_CONTEXT=desktop-linux`);
   later CI (GitHub Actions / Azure DevOps) + Hetzner (Terraform) / Azure (Bicep), optional k8s.
 - Specs: `docs/superpowers/specs/`, plans: `docs/superpowers/plans/`.

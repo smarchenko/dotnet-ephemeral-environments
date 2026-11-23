@@ -72,7 +72,7 @@ How the seed behaves:
 | deleted demo rows back | `db-update.ps1 -Restore` | edited and added rows untouched |
 | a clean start between test rounds of a feature | `db-reset.ps1` | all lost: only migrations + seed sets |
 
-Preview environments get the same steps per environment (stages 2 and 6b).
+Preview environments get the same steps per environment (stage 2: [environments.md](environments.md), later 6b).
 
 ## Check that it works
 

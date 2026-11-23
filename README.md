@@ -23,6 +23,8 @@ and the current progress in [`docs/STATUS.md`](docs/STATUS.md).
   ```
 
 - Local .NET tools (`dotnet-ef`): `dotnet tool restore`
+- For the multi-env scripts (`deploy/*.ps1`): **PowerShell 7.2+** (`winget install Microsoft.PowerShell`, run them
+  from `pwsh`)
 
 ## Quick start
 
@@ -43,11 +45,22 @@ Only Docker is needed to run it (the .NET SDK is for writing code):
 | <http://localhost:5081/swagger> | API (Swagger UI) |
 | <http://localhost:5081/health/ready> | readiness probe (checks the database) |
 
+Several environments side by side, one per branch (Traefik + shared Postgres), see
+[docs/environments.md](docs/environments.md):
+
+```powershell
+./deploy/deploy.ps1                       # the current branch as on disk -> http://<branch>.localhost:8080
+./deploy/deploy.ps1 -Branch <other>       # another branch, your checkout untouched
+./deploy/list.ps1                         # what runs where
+./deploy/destroy.ps1 -Env <env>           # remove an env with its database
+```
+
 ## Documentation
 
 | Document | What's inside |
 |---|---|
 | [docs/local-environment.md](docs/local-environment.md) | Containers and start order, scripts (`up`, `db-update [-Restore]`, `db-reset`, `down`), demo data, step-by-step checks |
+| [docs/environments.md](docs/environments.md) | Several envs on one machine: platform, `deploy` modes, env names, images, `list`/`destroy`/`db-*`, the Data Protection scale experiment, troubleshooting |
 | [docs/development.md](docs/development.md) | Development workflow (Docker vs IDE, nothing to publish), changing the model and migrations, adding demo data, running API/Web from the IDE and their configuration, tests, code quality |
 | [docs/architecture.md](docs/architecture.md) | Repository layout, CQRS, naming and validation rules, architecture tests |
 | [docs/STATUS.md](docs/STATUS.md) | Current stage, decisions, next step |

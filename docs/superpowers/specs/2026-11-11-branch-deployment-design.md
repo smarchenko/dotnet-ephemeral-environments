@@ -49,7 +49,7 @@ experiment before the next stage starts. Never deliver several new technologies 
 |---|---|---|
 | 0 | App skeleton | MVC Web, API + Swagger, Domain/Data/Contracts, EF Core + Postgres, JS widget, CORS, runtime config, health probes; one env via docker compose |
 | 1 | Migrations as a separate step + seed | **Done**, details in [`2026-11-16-stage-1-migrations-seed-design.md`](2026-11-16-stage-1-migrations-seed-design.md). EF migration bundle + DbTool `seed [--restore]` in one `migrator` image. **Local dev uses the same path**: compose one-off services `migrate` → `seed` run before `api` (`depends_on: condition: service_completed_successfully`), so `docker compose up` = DB → migrate → seed → apps. Scripts in `deploy/local/`: `db-update.ps1 [-Restore]` (migrate + new seed sets; `-Restore` re-inserts deleted demo rows) and `db-reset.ps1` (drop → migrate → seed). Seed sets are C# classes built through the domain, applied **once per database** (journal `__db_tool_history`), never update rows. No `EnsureCreated`, no migrate-on-startup even in Dev |
-| 2 | Multi-env locally | Traefik, `<env>.localhost:8080` / `<env>-api.localhost:8080`, shared Postgres with DB-per-env, `deploy`/`destroy -Env x` scripts; try `--scale api=2 web=2` (→ Data Protection keys) |
+| 2 | Multi-env locally | **Done**, details in [`2026-11-18-stage-2-multi-env-local-design.md`](2026-11-18-stage-2-multi-env-local-design.md), how to use: [`docs/environments.md`](../../environments.md). Traefik, `<env>.localhost:8080` / `<env>-api.localhost:8080`, shared Postgres with DB-per-env, `deploy`/`destroy -Env x` scripts; try `--scale api=2 web=2` (→ Data Protection keys) |
 | FF1 | Feature flags (config) | **Microsoft.FeatureManagement**, flags from config/env vars (`FeatureManagement__NewWidget=true`). Demo flag: API endpoint/field behind `[FeatureGate]`, new widget version in Web, `/features` endpoint for the JS widget; tests for flag on and off; `deploy -Env x -Flags NewWidget=true` → different flags per local env. Later in 6b: preview flags from PR labels (`flag:NewWidget`). Shows trunk-based dev: merge disabled, enable on the preview |
 | O1 | Observability | `EphemeralEnvs.ServiceDefaults` + OpenTelemetry (ASP.NET Core, HttpClient, Npgsql), Aspire Dashboard, `traceparent` sent from the widget, `deployment.environment` tag; **HTTP resilience** in ServiceDefaults (`Microsoft.Extensions.Http.Resilience`, `AddStandardResilienceHandler` via `ConfigureHttpClientDefaults`: attempt + total timeout, retries with backoff only for safe methods, circuit breaker, all from config; replaces the plain `Api__TimeoutSeconds`), retries visible in traces |
 | 3 | Bruno | Collection with a per-env `baseUrl` |
@@ -84,7 +84,7 @@ testing, remote Terraform state.
  Browser ──────► │ Traefik  *.domain                                           │
                  │   <env>.domain      ──► web-<env>  ──(internal)──► api-<env> │
                  │   <env>-api.domain  ──► api-<env>  ──► postgres (shared)     │
-                 │                                       └─ db: app_<env>      │
+                 │                                       └─ db: ee_<env>       │
                  └──────────────────────────────────────────────────────────────┘
  CI (GitHub / ADO) ── ssh ──► deploy/deploy.sh <env>:  create DB → migrator → seed → up web/api
                               deploy/destroy.sh <env>: down → DROP DATABASE

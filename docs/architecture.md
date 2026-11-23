@@ -18,8 +18,11 @@ Projects, layers and the rules the architecture tests enforce. The overall desig
 | `tests/EphemeralEnvs.DbTool.Tests` | Seed runner, seed set catalog and CLI tests (PostgreSQL in Docker) |
 | `tests/EphemeralEnvs.Domain.Tests` | Domain unit tests (invariants), no Docker |
 | `tests/EphemeralEnvs.ArchitectureTests` | Architecture rules (layers, CQRS, domain, contracts), no Docker |
+| `tests/EphemeralEnvs.Web.Tests` | Web tests (in-memory Web, API replaced by a stub), no Docker |
+| `tests/deploy/` | Pester tests of the deploy module, no Docker |
 | `src/*/Dockerfile` | Images of Api, Web and `migrator` (DbTool) (build context = repo root) |
 | `deploy/local/` | Local environment: `docker-compose.yml` (postgres → migrate → seed → api → web), `up.ps1`, `down.ps1`, `db-update.ps1`, `db-reset.ps1` (shared helpers in `common.ps1`) |
+| `deploy/*.ps1`, `deploy/lib/`, `deploy/platform/`, `deploy/env/` | Several envs on one machine (stage 2): scripts, their module (`EphemeralEnvs.Deploy.psm1`), platform compose (Traefik + shared Postgres), per-env compose. See [environments.md](environments.md) |
 | `docs/` | Status, spec, plans |
 
 ## CQRS (one database, separate read and write models)

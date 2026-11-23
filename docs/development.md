@@ -279,7 +279,8 @@ always wins.
 ### Script tests (Pester)
 
 The PowerShell module of the multi-env scripts (`deploy/lib/EphemeralEnvs.Deploy.psm1`) has unit tests in
-`tests/deploy/` (env name rules, database name, password). They need **PowerShell 7.2+** and **Pester 5.5+**
+`tests/deploy/` (env name rules, database name, password, which images `prune-images.ps1` removes). The scripts
+themselves are described in [environments.md](environments.md). They need **PowerShell 7.2+** and **Pester 5.5+**
 (Windows ships Pester 3.4, which cannot run them). One-time install:
 
 ```powershell
