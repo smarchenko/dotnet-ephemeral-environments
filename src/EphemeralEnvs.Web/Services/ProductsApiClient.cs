@@ -12,6 +12,21 @@ public sealed class ProductsApiClient(HttpClient http)
     public async Task<IReadOnlyList<ProductDto>> GetProductsAsync(CancellationToken ct) =>
         await http.GetFromJsonAsync<ProductDto[]>(new Uri("products", UriKind.Relative), ct) ?? [];
 
+    /// <summary>GET /products/stats. <c>null</c> when the API answers 404 (its ProductStats flag is off).</summary>
+    /// <exception cref="HttpRequestException">API unreachable or returned another non-success status.</exception>
+    /// <exception cref="TaskCanceledException">Timeout (or the request was aborted).</exception>
+    public async Task<ProductStatsDto?> GetStatsAsync(CancellationToken ct)
+    {
+        using var response = await http.GetAsync(new Uri("products/stats", UriKind.Relative), ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<ProductStatsDto>(ct)
+            ?? throw new HttpRequestException("GET products/stats returned an empty body.");
+    }
 
     /// <summary>POST /products. 201 → created; 400 → the API's field errors; anything else throws.</summary>
     /// <exception cref="HttpRequestException">API unreachable or returned another non-success status.</exception>

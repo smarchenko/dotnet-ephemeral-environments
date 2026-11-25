@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.FeatureManagement.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\EphemeralEnvs.Contracts\EphemeralEnvs.Contracts.csproj" />
     <ProjectReference Include="..\EphemeralEnvs.ServiceDefaults\EphemeralEnvs.ServiceDefaults.csproj" />
   </ItemGroup>

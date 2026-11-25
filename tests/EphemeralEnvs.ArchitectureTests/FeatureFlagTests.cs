@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 
 using EphemeralEnvs.Contracts;
@@ -6,7 +7,8 @@ namespace EphemeralEnvs.ArchitectureTests;
 
 /// <summary>
 /// Flag names live in <see cref="FeatureFlags"/>; each app declares the flags it uses in its appsettings.json.
-/// These rules catch a retired flag left in a config file and a constant no app declares.
+/// These rules catch a constant missing from <see cref="FeatureFlags.All"/>, a retired flag left in a config file
+/// and a constant no app declares.
 /// </summary>
 public sealed class FeatureFlagTests
 {
@@ -15,6 +17,18 @@ public sealed class FeatureFlagTests
         Path.Combine("src", "EphemeralEnvs.Api", "appsettings.json"),
         Path.Combine("src", "EphemeralEnvs.Web", "appsettings.json"),
     ];
+
+    [Fact]
+    public void All_ListsEveryFlagConstant_ExactlyOnce()
+    {
+        var constants = typeof(FeatureFlags)
+            .GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral && f.FieldType == typeof(string))
+            .Select(f => (string)f.GetRawConstantValue()!)
+            .Order(StringComparer.Ordinal);
+
+        Assert.Equal(constants, FeatureFlags.All.Order(StringComparer.Ordinal));
+    }
 
     [Fact]
     public void AppSettings_DeclareOnlyKnownFlags()

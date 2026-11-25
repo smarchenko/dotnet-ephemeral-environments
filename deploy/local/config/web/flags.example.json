@@ -1,4 +1,6 @@
 {
   "FeatureManagement": {
+    "ProductStats": true,
+    "NewBadge": true
   }
 }

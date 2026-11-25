@@ -1,31 +1,56 @@
 using System.Diagnostics;
+using System.Text.Json;
 
 using EphemeralEnvs.Contracts;
 using EphemeralEnvs.Web.Models;
 using EphemeralEnvs.Web.Services;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.FeatureManagement;
 
 namespace EphemeralEnvs.Web.Controllers;
 
-public sealed partial class HomeController(ProductsApiClient api, ILogger<HomeController> logger) : Controller
+public sealed partial class HomeController(ProductsApiClient api, IFeatureManager features, ILogger<HomeController> logger) : Controller
 {
     public const string ApiUnavailableMessage = "API is unavailable right now.";
+    public const string StatsNotAvailableMessage = "Statistics are not available (feature off in the API).";
+    public const string StatsUnavailableMessage = "Statistics are unavailable right now.";
 
-    /// <summary>Product list fetched server-side. If the API fails, the page still renders with a friendly message.</summary>
+    /// <summary>
+    /// Product list fetched server-side. If the API fails, the page still renders with a friendly message.
+    /// With the Web's ProductStats flag on, stats are fetched in parallel; their failure never hides the products.
+    /// </summary>
     public async Task<IActionResult> Index()
     {
         var aborted = HttpContext.RequestAborted;
+        var statsTask = await features.IsEnabledAsync(FeatureFlags.ProductStats) ? LoadStatsAsync(aborted) : null;
         try
         {
-            return View(await api.GetProductsAsync(aborted));
+            var products = await api.GetProductsAsync(aborted);
+            var (stats, statsMessage) = statsTask is null ? (null, null) : await statsTask;
+            return View(new HomeIndexModel(products, statsTask is not null, stats, statsMessage));
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !aborted.IsCancellationRequested)
         {
             // TaskCanceledException without an aborted request = the client's timeout.
             LogApiUnavailable(ex);
             ViewData["Error"] = ApiUnavailableMessage;
-            return View(Array.Empty<ProductDto>());
+            return View(new HomeIndexModel([], false, null, null));
+        }
+    }
+
+    /// <summary>404 = the API's flag is off (situation E); any other failure = unavailable. An aborted request propagates.</summary>
+    private async Task<(ProductStatsDto? Stats, string? Message)> LoadStatsAsync(CancellationToken aborted)
+    {
+        try
+        {
+            var stats = await api.GetStatsAsync(aborted);
+            return stats is null ? (null, StatsNotAvailableMessage) : (stats, null);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException && !aborted.IsCancellationRequested)
+        {
+            LogStatsUnavailable(ex);
+            return (null, StatsUnavailableMessage);
         }
     }
 
@@ -82,4 +107,7 @@ public sealed partial class HomeController(ProductsApiClient api, ILogger<HomeCo
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "API call failed; showing the page without products")]
     private partial void LogApiUnavailable(Exception exception);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Stats call failed; showing the products without stats")]
+    private partial void LogStatsUnavailable(Exception exception);
 }

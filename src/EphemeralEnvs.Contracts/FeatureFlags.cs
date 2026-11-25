@@ -9,5 +9,8 @@ public static class FeatureFlags
     /// <summary>GET /products/stats (Api), stats bar in the widget, stats panel on the Web's product list.</summary>
     public const string ProductStats = "ProductStats";
 
-    public static IReadOnlyList<string> All { get; } = [ProductStats];
+    /// <summary>"New" badge on products created in the last 24 hours (Web view only, situation C).</summary>
+    public const string NewBadge = "NewBadge";
+
+    public static IReadOnlyList<string> All { get; } = [ProductStats, NewBadge];
 }

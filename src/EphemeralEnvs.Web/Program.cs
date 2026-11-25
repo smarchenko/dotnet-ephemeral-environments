@@ -4,6 +4,7 @@ using EphemeralEnvs.Web.Services;
 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
+using Microsoft.FeatureManagement;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -29,6 +30,9 @@ builder.Services.AddHttpClient<ProductsApiClient>((sp, http) =>
     http.BaseAddress = baseUrl.AbsoluteUri.EndsWith('/') ? baseUrl : new Uri(baseUrl.AbsoluteUri + "/");
     http.Timeout = TimeSpan.FromSeconds(options.TimeoutSeconds);
 });
+
+// Flags from configuration section FeatureManagement (env: FeatureManagement__<Name>=true), read per request.
+builder.Services.AddFeatureManagement();
 
 // Every unsafe request (POST/PUT/DELETE) of a form must carry the antiforgery token.
 builder.Services.AddControllersWithViews(options => options.Filters.Add(new AutoValidateAntiforgeryTokenAttribute()));
