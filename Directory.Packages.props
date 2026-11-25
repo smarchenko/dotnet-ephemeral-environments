@@ -7,6 +7,8 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
+    <!-- Feature flags from configuration (section FeatureManagement), [FeatureGate], <feature> tag helper. -->
+    <PackageVersion Include="Microsoft.FeatureManagement.AspNetCore" Version="4.8.0" />
     <!-- EF Core: Npgsql provider depends on an older EF patch; pin all EF Core packages to the same version. -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.15" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.15" />

@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<ICommandHandler<CreateProductCommand, Guid>, CreateProductHandler>();
         services.AddScoped<IQueryHandler<GetProductsQuery, ProductDto[]>, GetProductsHandler>();
         services.AddScoped<IQueryHandler<GetProductByIdQuery, ProductDto?>, GetProductByIdHandler>();
+        services.AddScoped<IQueryHandler<GetProductStatsQuery, ProductStatsDto>, GetProductStatsHandler>();
 
         return services;
     }

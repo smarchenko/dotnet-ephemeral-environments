@@ -5,6 +5,7 @@ using EphemeralEnvs.ServiceDefaults;
 
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.Extensions.Options;
+using Microsoft.FeatureManagement;
 
 const string readyTag = "ready";
 
@@ -16,16 +17,23 @@ builder.AddServiceDefaults();
 builder.Services.Configure<AppOptions>(builder.Configuration.GetSection(AppOptions.SectionName));
 
 builder.Services.AddControllers();
+// Flags from configuration section FeatureManagement (env: FeatureManagement__<Name>=true). Disabled [FeatureGate] -> 404.
+builder.Services.AddFeatureManagement();
 // Errors (4xx/5xx, validation) are returned as RFC 9457 ProblemDetails (application/problem+json).
 builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<DomainValidationExceptionHandler>();
 
-builder.Services.AddOpenApi(options => options.AddDocumentTransformer((document, context, _) =>
+builder.Services.AddOpenApi(options =>
 {
-    var appOptions = context.ApplicationServices.GetRequiredService<IOptions<AppOptions>>().Value;
-    document.Info.Description = $"Environment: {appOptions.EnvironmentName}";
-    return Task.CompletedTask;
-}));
+    options.AddDocumentTransformer((document, context, _) =>
+    {
+        var appOptions = context.ApplicationServices.GetRequiredService<IOptions<AppOptions>>().Value;
+        document.Info.Description = $"Environment: {appOptions.EnvironmentName}";
+        return Task.CompletedTask;
+    });
+    // Endpoints behind a disabled [FeatureGate] answer 404, so Swagger does not list them.
+    options.AddDocumentTransformer<FeatureGateDocumentTransformer>();
+});
 
 builder.Services.AddCors(options => options.AddPolicy(CorsSetup.PolicyName, policy => policy
     .WithOrigins(CorsSetup.ParseOrigins(builder.Configuration[CorsSetup.ConfigKey]))

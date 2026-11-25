@@ -3,6 +3,7 @@ using EphemeralEnvs.Application.Products;
 using EphemeralEnvs.Contracts;
 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.FeatureManagement.Mvc;
 
 namespace EphemeralEnvs.Api.Controllers;
 
@@ -16,6 +17,14 @@ public sealed class ProductsController : ControllerBase
         [FromServices] IQueryHandler<GetProductsQuery, ProductDto[]> getProducts,
         CancellationToken cancellationToken) =>
         getProducts.HandleAsync(new GetProductsQuery(), cancellationToken);
+
+    /// <summary>Behind the ProductStats flag: when it is off the endpoint does not exist (404).</summary>
+    [HttpGet("stats")]
+    [FeatureGate(FeatureFlags.ProductStats)]
+    public Task<ProductStatsDto> GetStats(
+        [FromServices] IQueryHandler<GetProductStatsQuery, ProductStatsDto> getStats,
+        CancellationToken cancellationToken) =>
+        getStats.HandleAsync(new GetProductStatsQuery(), cancellationToken);
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProductDto>> GetById(

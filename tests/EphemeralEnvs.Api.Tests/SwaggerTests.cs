@@ -45,6 +45,41 @@ public sealed class SwaggerTests
     }
 
     [Fact]
+    public async Task Doc_FlagOff_HidesGatedEndpoint()
+    {
+        var paths = await DocPaths(new Dictionary<string, string?>
+        {
+            ["Swagger:Enabled"] = "true",
+            ["FeatureManagement:ProductStats"] = "false",
+        });
+
+        Assert.DoesNotContain("/products/stats", paths);
+        Assert.Contains("/products", paths);
+        Assert.Contains("/products/{id}", paths);
+    }
+
+    [Fact]
+    public async Task Doc_FlagOn_ShowsGatedEndpoint()
+    {
+        var paths = await DocPaths(new Dictionary<string, string?>
+        {
+            ["Swagger:Enabled"] = "true",
+            ["FeatureManagement:ProductStats"] = "true",
+        });
+
+        Assert.Contains("/products/stats", paths);
+    }
+
+    private static async Task<List<string>> DocPaths(Dictionary<string, string?> settings)
+    {
+        await using var factory = new ApiFactory(NoDb, settings);
+        using var client = factory.CreateClient();
+
+        using var doc = JsonDocument.Parse(await client.GetStringAsync(new Uri("/openapi/v1.json", UriKind.Relative)));
+        return doc.RootElement.GetProperty("paths").EnumerateObject().Select(p => p.Name).ToList();
+    }
+
+    [Fact]
     public async Task Disabled_Returns404()
     {
         await using var factory = new ApiFactory(NoDb, new Dictionary<string, string?> { ["Swagger:Enabled"] = "false" });
