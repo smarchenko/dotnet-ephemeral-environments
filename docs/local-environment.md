@@ -44,6 +44,26 @@ The scripts set `DOCKER_CONTEXT=desktop-linux` themselves and restore your shell
 `-DbPort` (pass the same port as to `up.ps1`, or set `EE_DB_PORT` once). A busy port makes `up.ps1` stop with Docker's
 "port is already allocated" error: pick another port.
 
+## Feature flags without a restart
+
+`deploy/local` mounts `deploy/local/config/api/` and `deploy/local/config/web/` into the containers as `/app/config/`.
+An optional `flags.json` there is added after `appsettings.json` and the environment variables (so it wins) and is
+re-read when it changes. The files are git-ignored; `flags.example.json` next to them shows the format.
+
+```powershell
+Copy-Item deploy/local/config/api/flags.example.json deploy/local/config/api/flags.json   # ProductStats on
+# edit "true" <-> "false" in flags.json; delete the file to go back to the appsettings.json defaults
+curl.exe http://localhost:5081/features                                                    # {"productStats":true}
+```
+
+- A change reaches the running app in about **8 seconds**, with no restart. Docker Desktop does not pass file change
+  events from a Windows folder into a Linux container, so the apps poll (`DOTNET_USE_POLLING_FILE_WATCHER=true`).
+- Only flags follow the file live. CORS, connection strings and other settings read at startup need `up.ps1`.
+- A broken `flags.json` saved while the app runs keeps the app running (the flag reads as off until it is fixed);
+  a broken file at startup stops the app: fix or delete it.
+- Local only. Multi-env environments get their flags at deploy time (`deploy.ps1 -Flags`, label `ee.flags`), so the
+  label always tells the truth.
+
 ## Demo data (seed)
 
 Seed set `0001-products` (`src/EphemeralEnvs.DbTool/Seeding/Sets/Seed0001Products.cs`). The ids are fixed, so QA,

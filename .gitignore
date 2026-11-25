@@ -490,3 +490,6 @@ $RECYCLE.BIN/
 
 # Ephemeral environments: git worktrees of deployed branches (deploy/deploy.ps1)
 .ee/
+
+# deploy/local live flags (copy flags.example.json to flags.json); never committed
+deploy/local/config/*/flags.json

@@ -65,6 +65,11 @@ services:
       Cors__AllowedOrigins: http://localhost:${EE_WEB_PORT:-5080}
       Swagger__Enabled: "true"
       App__EnvironmentName: local
+      # deploy/local/config/api/flags.json (git-ignored) is re-read on change: flags switch without a restart.
+      # Polling: change events from a Windows folder do not reach a Linux container.
+      DOTNET_USE_POLLING_FILE_WATCHER: "true"
+    volumes:
+      - ./config/api:/app/config:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -83,6 +88,10 @@ services:
       Api__PublicBaseUrl: http://localhost:${EE_API_PORT:-5081}
       Api__TimeoutSeconds: "5"
       App__EnvironmentName: local
+      # deploy/local/config/web/flags.json (git-ignored), re-read on change; see the api service.
+      DOTNET_USE_POLLING_FILE_WATCHER: "true"
+    volumes:
+      - ./config/web:/app/config:ro
     depends_on:
       - api
 

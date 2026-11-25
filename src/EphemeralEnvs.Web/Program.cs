@@ -9,6 +9,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // JSON logs with TraceId/SpanId (shared with the API; OpenTelemetry joins in stage O1).
 builder.AddServiceDefaults();
+// Optional config/flags.json, re-read on change (deploy/local mounts it to switch flags live; Web flags arrive in FF1 Task 3).
+builder.AddFlagsFile();
 
 // Both API URLs are required and absolute, the timeout positive; a bad value stops the app at startup, not on the first request.
 builder.Services.AddOptions<ApiOptions>()

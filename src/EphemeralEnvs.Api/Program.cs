@@ -13,6 +13,8 @@ var builder = WebApplication.CreateBuilder(args);
 
 // JSON logs with TraceId/SpanId (shared with the Web; OpenTelemetry joins in stage O1).
 builder.AddServiceDefaults();
+// Optional config/flags.json, re-read on change (deploy/local mounts it to switch flags live).
+builder.AddFlagsFile();
 
 builder.Services.Configure<AppOptions>(builder.Configuration.GetSection(AppOptions.SectionName));
 
